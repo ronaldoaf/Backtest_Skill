@@ -49,6 +49,17 @@ Use esta estrutura ao entregar o resultado. Seja direto e não esconda testes re
 | Deflated Sharpe Ratio | | |
 | PBO | | |
 
+Se houve comparação entre estratégias (ver `comparacao.md`):
+
+| Comparação | Diferença de Sharpe (IC 95%) | p-valor | Método |
+|---|---|---|---|
+| A x B | | | HAC / bootstrap pareado |
+| Melhor de N x benchmark | | p_spa = | SPA |
+| MCS (90%) | {estratégias que ficam} | | T_max |
+
+- Correlação entre as estratégias:
+- Critério de desempate, se os testes não distinguem:
+
 ## 9. Regimes e mercados
 - Tabela por regime e por ano:
 - Outros ativos/mercados sem reotimizar:

@@ -68,7 +68,7 @@ Se as tentativas forem correlacionadas, estime o número efetivo de tentativas i
 PBO > 0,5: o processo de seleção é pior que escolher ao acaso. Desejável: PBO < 0,1 a 0,2.
 
 ### Alternativas
-- **White's Reality Check** / **Hansen SPA**: testam se a melhor estratégia supera o benchmark considerando o conjunto testado.
+- **White's Reality Check** / **Hansen SPA**: testam se a melhor estratégia supera o benchmark considerando o conjunto testado. Implementados em `scripts/comparacao.py` (`teste_spa`); ver `comparacao.md`, que cobre também diferença de Sharpe entre duas estratégias e o Model Confidence Set.
 - Correções de Bonferroni/Holm ou controle de FDR (Benjamini-Hochberg) para p-valores de muitas variações.
 - Barra prática de Harvey, Liu e Zhu (2016): para uma nova "descoberta", t-stat > 3 em vez de 2.
 
