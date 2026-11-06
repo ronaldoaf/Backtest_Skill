@@ -2,6 +2,8 @@
 
 Pergunta central: **qual a chance de um resultado tão bom quanto este aparecer por sorte, dado tudo o que foi tentado?** As funções citadas estão em `scripts/estatistica.py`.
 
+**Taxa livre de risco.** Quando o caixa rende juros (T-bill em USD), meça o Sharpe em excesso dela. `resumo_metricas` e `bootstrap_metricas` recebem `rf_por_periodo`. Nas demais funções, passe a série já em excesso: `deflated_sharpe_ratio` e `pbo_cscv` com `retornos − rf`, e nas permutações `retornos_ativo = close.pct_change() − rf` quando a posição comprada é financiada pelo caixa. Se o caixa não rende (comum em cripto), use rf = 0. `walk_forward_parametros` (`scripts/backtest.py`) devolve a matriz de todas as configurações e os Sharpes das tentativas prontos para estes testes.
+
 ## 0. Em que amostra cada teste vale
 
 Um teste calibrado para uma estratégia definida antes de olhar os dados aprova ruído quando é aplicado à melhor de várias configurações. Em simulação com a melhor de 50 estratégias aleatórias (200 repetições), a permutação simples deu p < 0,05 em 81% dos casos e p < 0,01 em 32%.

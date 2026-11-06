@@ -13,7 +13,7 @@ A correlação entre as estratégias importa nos dois sentidos:
 ## Pré-requisitos
 
 1. **Mesmas datas.** Monte um DataFrame com uma coluna por estratégia e alinhe (`df = pd.DataFrame(series).dropna()`). Comparar períodos diferentes compara regimes, não estratégias. As funções recusam Series do pandas com datas diferentes; arrays sem índice não têm como ser conferidos.
-2. **Taxa livre de risco.** Passe `rf_por_periodo` com a taxa **por período** nas mesmas datas: no Brasil, o CDI diário (`cdi.reindex(df.index)`, ou `(1 + cdi_anual) ** (1 / 252) - 1` como aproximação). Sem isso o Sharpe usa rf = 0, e uma estratégia de baixa volatilidade que rende CDI + 1% ao ano parece ter Sharpe 12. A função recusa uma taxa anual passada por engano.
+2. **Taxa livre de risco.** Passe `rf_por_periodo` com a taxa **por período** nas mesmas datas quando o caixa rende juros: em USD, o T-bill de 3 meses (`tbill.reindex(df.index)`, ou `(1 + taxa_anual) ** (1 / 252) - 1` como aproximação); em cripto, o rendimento do caixa parado na exchange, muitas vezes 0. Com juros relevantes e rf = 0, uma estratégia de baixa volatilidade que só carrega o juro do caixa parece ter Sharpe altíssimo. A função recusa uma taxa anual passada por engano.
 3. **Mesmo tratamento.** Mesma convenção de timing, mesmos custos e mesmo capital.
 4. **Amostra honesta.** Compare séries fora da amostra (walk-forward concatenado ou holdout). Comparar curvas dentro da amostra mede quem foi mais otimizada.
 5. **Mesmo risco.** Uma estratégia com o dobro de alavancagem rende o dobro sem ser melhor. Todos os testes comparam Sharpe por padrão; SPA e MCS fazem isso escalando as séries à mesma volatilidade (`criterio="sharpe"`). Use `criterio="retorno"` só quando o risco já for igual ou a pergunta for de retorno bruto.
@@ -49,7 +49,7 @@ Também dá `prob_a_melhor`, a fração das reamostras em que A teve Sharpe maio
 Com N estratégias há N(N−1)/2 pares; com 5 estratégias de mesmo Sharpe, algum dos 10 pares deu p < 0,05 em 30% das simulações. Use `p_holm` (4,5% na mesma simulação). Cada linha traz também o IC da diferença, sem correção. Se o objetivo é escolher a melhor, prefira SPA ou MCS, que respondem a essa pergunta diretamente.
 
 ### A melhor contra o benchmark: `teste_spa`
-Hansen (2005), com o White's Reality Check (2000) junto. Passe **todas** as candidatas testadas, inclusive as descartadas, e o benchmark: buy and hold, a estratégia atual ou, para "ganha do caixa", a série do CDI (nesse caso passe o CDI também em `rf_por_periodo`; um benchmark que quase não oscila sem isso é recusado). Use `p_spa`. Com todas as candidatas empatadas com o benchmark, rejeitou 6% a 7% a 5% em simulação: trate p entre 0,03 e 0,05 como limítrofe. O Reality Check é conservador: incluir candidatas muito ruins aumenta o p-valor dele, e o SPA corrige isso.
+Hansen (2005), com o White's Reality Check (2000) junto. Passe **todas** as candidatas testadas, inclusive as descartadas, e o benchmark: buy and hold, a estratégia atual ou, para "ganha do caixa", a série da taxa livre de risco (nesse caso passe-a também em `rf_por_periodo`; um benchmark que quase não oscila sem isso é recusado). Use `p_spa`. Com todas as candidatas empatadas com o benchmark, rejeitou 6% a 7% a 5% em simulação: trate p entre 0,03 e 0,05 como limítrofe. O Reality Check é conservador: incluir candidatas muito ruins aumenta o p-valor dele, e o SPA corrige isso.
 
 Relação com `teste_permutacao_selecao` (estatistica.py): aquele exige as posições e pergunta "a melhor bate estratégias aleatórias com o mesmo perfil de trades?"; o SPA só exige os retornos e pergunta "a melhor bate este benchmark?". Quando os dois se aplicam, rode os dois.
 
@@ -62,7 +62,7 @@ Leitura do resultado:
 
 ## Armadilhas
 
-- **Esquecer o CDI.** Sharpe com rf = 0 favorece estratégias de baixa volatilidade que só carregam o CDI. Num exemplo de 5 anos, CDI + 1% com vol de 1% contra CDI + 15% com vol de 10% deu "A muito melhor, p ≈ 0" com rf = 0 e "indistinguíveis, p = 0,89" em excesso do CDI.
+- **Esquecer a taxa livre de risco quando os juros são altos.** Sharpe com rf = 0 favorece estratégias de baixa volatilidade que só carregam o juro do caixa. Com T-bill de 4%, rf + 1% com vol de 1% contra rf + 15% com vol de 10% deu "A muito melhor, p ≈ 0" com rf = 0 e "indistinguíveis" em excesso de rf.
 - **Escolher no mesmo período em que se compara.** Se você escolheu as 3 finalistas olhando os mesmos dados, o teste entre elas herda o viés de seleção. Inclua todas as candidatas no SPA/MCS ou compare num período que não foi usado para escolher.
 - **Testar só o par mais promissor.** Rodar `teste_diferenca_sharpe` no par com maior diferença visível é seleção. Use `comparar_pares` ou o MCS.
 - **Concluir "A é igual a B" a partir de p alto.** p alto significa "não deu para distinguir", não "são iguais". Reporte o IC: se ele vai de −0,8 a +1,1, a amostra não diz nada.

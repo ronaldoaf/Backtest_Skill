@@ -1,0 +1,35 @@
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Dependências
+        run: pip install numpy pandas pytest
+      - name: Valida a skill (cabeçalho, arquivos e nomes citados na documentação)
+        run: python ferramentas/validar_skill.py --zip
+      - name: Testes
+        run: python -m pytest tests -q
+      - name: Demonstrações
+        run: |
+          cd skills/backtest/scripts
+          for s in estatistica comparacao portfolio backtest; do python $s.py > /dev/null; done
+          python exemplo_completo.py --rapido > /dev/null
+      - name: Pacote da skill
+        if: matrix.python == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-skill
+          path: dist/backtest.zip

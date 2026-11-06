@@ -167,6 +167,17 @@ def test_formula_de_execucao_na_abertura_bate_com_simulacao_evento_a_evento():
     assert np.allclose((1 + retorno).cumprod().to_numpy(), curva, rtol=0, atol=1e-12)
 
 
+def test_resumo_e_bootstrap_descontam_o_rf():
+    rng = np.random.default_rng(21)
+    r = rng.normal(0.0006, 0.01, 1000)
+    rf_t = np.full(1000, 0.0004)
+    assert math.isclose(E.resumo_metricas(r, rf_por_periodo=rf_t)["sharpe"], E.sharpe(r - rf_t))
+    assert math.isclose(E.resumo_metricas(r, rf_por_periodo=0.0004)["sharpe"], E.sharpe(r - rf_t))
+    com = E.bootstrap_metricas(r, n_sim=200, rf_por_periodo=rf_t)
+    sem = E.bootstrap_metricas(r, n_sim=200)
+    assert com["sharpe_ic"][1] < sem["sharpe_ic"][1] and com["cagr_ic"] == sem["cagr_ic"]
+
+
 def test_demonstracao_roda():
     runpy.run_path(str(SCRIPTS / "estatistica.py"), run_name="__main__")
 

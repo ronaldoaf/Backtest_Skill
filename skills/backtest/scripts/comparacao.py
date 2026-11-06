@@ -13,9 +13,10 @@ Convenções (as mesmas de `estatistica.py`):
   Séries de tamanhos diferentes, ou Series/DataFrames do pandas com datas diferentes, levantam
   ValueError: alinhe antes (ex.: `pd.DataFrame(retornos).dropna()`).
 - `rf_por_periodo`: taxa livre de risco POR PERÍODO (número ou série alinhada às mesmas datas),
-  descontada antes de calcular Sharpe. No Brasil, use o CDI: `(1 + cdi_anual) ** (1 / 252) - 1`
-  ou a série diária histórica. Com rf = 0, uma estratégia de baixa volatilidade que rende
-  CDI + 1% ao ano parece ter Sharpe 12, e as comparações de Sharpe saem erradas.
+  descontada antes de calcular Sharpe. Em USD, o T-bill de 3 meses: `(1 + taxa_anual) ** (1 / 252) - 1`
+  ou a série diária histórica (FRED DTB3); em cripto, o rendimento do caixa parado (0 se não
+  rende nada). Com juros altos e rf = 0, uma estratégia de baixa volatilidade que só carrega o
+  juro do caixa parece ter Sharpe enorme, e as comparações de Sharpe saem erradas.
 - NaN ou infinito levantam ValueError.
 - `periodos_por_ano`: 252 diário, 365 cripto, 52 semanal, 12 mensal.
 - `tamanho_bloco`: blocos do bootstrap circular. Padrão: round(T ** (1/3)), que dá 3 a 5 em
@@ -36,10 +37,10 @@ Uso rápido:
     from comparacao import formatar_tabela, tabela_comparativa, teste_diferenca_sharpe, model_confidence_set
 
     df = pd.DataFrame({"momentum": r_mom, "reversao": r_rev, "buy_hold": r_bh}).dropna()
-    cdi = cdi_diario.reindex(df.index)             # mesma data, taxa por período
-    print(formatar_tabela(tabela_comparativa(df, rf_por_periodo=cdi)))
-    print(teste_diferenca_sharpe(df["momentum"], df["buy_hold"], rf_por_periodo=cdi))
-    print(model_confidence_set(df, rf_por_periodo=cdi))
+    rf = tbill_diario.reindex(df.index)            # mesma data, taxa por período (opcional)
+    print(formatar_tabela(tabela_comparativa(df, rf_por_periodo=rf)))
+    print(teste_diferenca_sharpe(df["momentum"], df["buy_hold"], rf_por_periodo=rf))
+    print(model_confidence_set(df, rf_por_periodo=rf))
 
 Execute `python comparacao.py` para uma demonstração com dados sintéticos.
 """
@@ -91,7 +92,7 @@ def _checar_datas(indices: dict) -> None:
                 comuns = ""
             raise ValueError(
                 f"'{n0}' e '{n}' não estão nas mesmas datas{comuns}. Alinhe antes, por exemplo "
-                f"df = pd.DataFrame(retornos).dropna() e rf = cdi.reindex(df.index).")
+                f"df = pd.DataFrame(retornos).dropna() e rf = tbill.reindex(df.index).")
 
 
 def _painel(retornos, nomes=None, minimo_colunas: int = 2):
@@ -134,7 +135,7 @@ def _rf(rf_por_periodo, T: int, indice, periodos_por_ano: int) -> np.ndarray:
         rf = _vetor(rf_por_periodo, "rf_por_periodo", minimo=1)
         if len(rf) != T:
             raise ValueError(f"rf_por_periodo tem {len(rf)} valores e os retornos têm {T}. "
-                             f"Alinhe pelas mesmas datas (ex.: cdi.reindex(df.index)).")
+                             f"Alinhe pelas mesmas datas (ex.: tbill.reindex(df.index)).")
         _checar_datas({"retornos": indice, "rf_por_periodo": _indice(rf_por_periodo)})
     if (1 + rf.mean()) ** periodos_por_ano - 1 > 1.0:
         raise ValueError(
@@ -244,7 +245,7 @@ def _momentos_ou_erro(X: np.ndarray):
     if m is None:
         raise ValueError(
             "Uma das séries tem variância zero (depois de descontar rf); o Sharpe dela não está "
-            "definido. Para testar se uma estratégia bate o caixa, use teste_spa com o CDI como "
+            "definido. Para testar se uma estratégia bate o caixa, use teste_spa com a taxa livre de risco como "
             "benchmark e rf_por_periodo.")
     return m
 
@@ -418,7 +419,7 @@ def _diferencas_spa(C: np.ndarray, b: np.ndarray, rf: np.ndarray, criterio: str)
         raise ValueError(
             "O benchmark quase não oscila perto das candidatas (parece caixa ou renda fixa curta). "
             "Para testar se alguma candidata bate o caixa, passe rf_por_periodo igual ao benchmark "
-            "(ex.: a série do CDI nos dois) ou use criterio='retorno'.")
+            "(ex.: a série da taxa livre de risco nos dois) ou use criterio='retorno'.")
     return E / sd * sd_b - e[:, None]          # candidatas na volatilidade do benchmark
 
 
@@ -428,8 +429,8 @@ def teste_spa(retornos_candidatas, retornos_benchmark, nomes=None, n_sim: int = 
     """H0: nenhuma candidata é melhor que o benchmark.
 
     Recebe TODAS as candidatas testadas (inclusive as descartadas) e o benchmark, todos
-    alinhados: buy and hold, a estratégia atual ou, para "ganha do caixa", a série do CDI (nesse
-    caso passe também `rf_por_periodo` = CDI).
+    alinhados: buy and hold, a estratégia atual ou, para "ganha do caixa", a série da taxa livre
+    de risco (nesse caso passe também `rf_por_periodo` com ela).
     `criterio`:
     - "sharpe" (padrão): desconta rf e escala cada candidata à volatilidade do benchmark antes de
       comparar médias, o que equivale a comparar Sharpe. Uma candidata alavancada não ganha só
@@ -498,7 +499,7 @@ def model_confidence_set(retornos, nomes=None, alfa: float = 0.10, n_sim: int = 
     estratégias.
     `criterio`:
     - "sharpe" (padrão): desconta rf e escala cada série à mesma volatilidade antes de comparar
-      médias, o que equivale a comparar Sharpe. Passe o CDI em `rf_por_periodo`.
+      médias, o que equivale a comparar Sharpe. Passe a taxa livre de risco em `rf_por_periodo`.
     - "retorno": compara retornos médios brutos e favorece a estratégia mais alavancada; use só
       se o risco já for o mesmo.
     Em simulação, com todas equivalentes, exclui alguma por engano em 9% a 13% das vezes a
@@ -559,23 +560,23 @@ if __name__ == "__main__":
 
     rng = np.random.default_rng(1)
     T = 252 * 6
-    cdi = (1.11) ** (1 / 252) - 1                         # CDI de 11% ao ano, por pregão
+    rf = 1.04 ** (1 / 252) - 1                            # T-bill de 4% ao ano, por dia útil
     fator = rng.normal(0, 0.010, T)                        # risco comum às estratégias
     r = {
-        "boa": cdi + 0.0006 + 0.8 * fator + rng.normal(0, 0.006, T),
-        "parecida": cdi + 0.0004 + 0.8 * fator + rng.normal(0, 0.006, T),
-        "ruim": cdi - 0.0002 + 0.5 * fator + rng.normal(0, 0.010, T),
-        "buy_hold": cdi + 0.0002 + fator,
+        "boa": rf + 0.0006 + 0.8 * fator + rng.normal(0, 0.006, T),
+        "parecida": rf + 0.0004 + 0.8 * fator + rng.normal(0, 0.006, T),
+        "ruim": rf - 0.0002 + 0.5 * fator + rng.normal(0, 0.010, T),
+        "buy_hold": rf + 0.0002 + fator,
     }
-    print(formatar_tabela(tabela_comparativa(r, rf_por_periodo=cdi)))
+    print(formatar_tabela(tabela_comparativa(r, rf_por_periodo=rf)))
     print("\nDiferença de Sharpe boa x parecida (HAC):",
-          _fmt(teste_diferenca_sharpe(r["boa"], r["parecida"], rf_por_periodo=cdi)))
+          _fmt(teste_diferenca_sharpe(r["boa"], r["parecida"], rf_por_periodo=rf)))
     print("Mesma pergunta por bootstrap estudentizado:",
-          _fmt(bootstrap_diferenca_sharpe(r["boa"], r["parecida"], n_sim=1000, rf_por_periodo=cdi)))
+          _fmt(bootstrap_diferenca_sharpe(r["boa"], r["parecida"], n_sim=1000, rf_por_periodo=rf)))
     print("\nTodos os pares (Holm):")
-    for linha in comparar_pares(r, rf_por_periodo=cdi):
+    for linha in comparar_pares(r, rf_por_periodo=rf):
         print("  ", _fmt(linha))
     candidatas = {k: v for k, v in r.items() if k != "buy_hold"}
     print("\nSPA contra buy and hold (Sharpe):",
-          _fmt(teste_spa(candidatas, r["buy_hold"], n_sim=1000, rf_por_periodo=cdi)))
-    print("Model Confidence Set (10%, Sharpe):", _fmt(model_confidence_set(r, n_sim=1000, rf_por_periodo=cdi)))
+          _fmt(teste_spa(candidatas, r["buy_hold"], n_sim=1000, rf_por_periodo=rf)))
+    print("Model Confidence Set (10%, Sharpe):", _fmt(model_confidence_set(r, n_sim=1000, rf_por_periodo=rf)))

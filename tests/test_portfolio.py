@@ -16,7 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import portfolio as P  # noqa: E402
 
-CDI = 1.11 ** (1 / 252) - 1
+RF = 1.04 ** (1 / 252) - 1
 
 
 def _levanta(funcao, *args, **kwargs) -> str:
@@ -70,7 +70,7 @@ def test_pesos_respeitam_limites_em_todos_os_metodos():
     R = _amostra(rng, 500, np.full(4, 0.0005), _cov_exemplo())
     for m in P.METODOS:
         for lo in (0.0, 0.1):
-            res = P.pesos_portfolio(R, m, peso_min=lo, peso_max=0.35, rf_por_periodo=CDI)
+            res = P.pesos_portfolio(R, m, peso_min=lo, peso_max=0.35, rf_por_periodo=RF)
             w = np.array(list(res["pesos"].values()))
             assert np.all(w <= 0.35 + 1e-9) and np.all(w >= lo - 1e-9), (m, lo)
             if m != "kelly":
@@ -176,7 +176,7 @@ def test_max_sharpe_com_limites_ganha_de_qualquer_ponto_viavel():
         assert sr(P._maior_media(mu, lo, hi)) <= sr(w) + 1e-12
 
 
-def test_max_sharpe_com_media_1_n_abaixo_do_cdi():
+def test_max_sharpe_com_media_1_n_abaixo_do_rf():
     # 1/N tem média negativa, mas a estratégia 4 sozinha tem Sharpe positivo
     S = _cov_exemplo()
     sd = np.sqrt(np.diag(S))
@@ -194,19 +194,19 @@ def test_max_sharpe_sem_media_positiva_vira_min_variancia():
     assert np.allclose(w, P._quadratico(S, np.zeros(4), proj, np.full(4, 0.25)), atol=1e-7)
 
 
-def test_kelly_fracionado_bate_formula_e_deixa_sobra_no_cdi():
+def test_kelly_fracionado_bate_formula_e_deixa_sobra_no_rf():
     rng = np.random.default_rng(3)
     S = _cov_exemplo()
-    R = CDI + _amostra(rng, 3000, np.array([0.0004, 0.0003, 0.0005, 0.0002]), S)
-    rf = np.full(len(R), CDI)
-    mu = (R - CDI).mean(axis=0)
+    R = RF + _amostra(rng, 3000, np.array([0.0004, 0.0003, 0.0005, 0.0002]), S)
+    rf = np.full(len(R), RF)
+    mu = (R - RF).mean(axis=0)
     Sh = P._cov(R, True)
     completo = np.linalg.solve(Sh, mu)
     w = P._pesos(R, rf, "kelly", -100.0, 100.0, True, 0.0, 0.5, 100.0, None)
     assert np.allclose(w, 0.5 * completo, rtol=1e-6)               # sem limites: f × Kelly
     # meio Kelly passa de 100%: com alavancagem 1 investe 100% (não 50%), no ótimo restrito
     assert 0.5 * completo.sum() > 1
-    limitado = P.pesos_portfolio(R, "kelly", rf_por_periodo=CDI, encolher_media=0.0)
+    limitado = P.pesos_portfolio(R, "kelly", rf_por_periodo=RF, encolher_media=0.0)
     wl = np.array(list(limitado["pesos"].values()))
     assert math.isclose(wl.sum(), 1.0, abs_tol=1e-9)
     assert math.isclose(limitado["caixa"], 1 - wl.sum())
@@ -214,9 +214,9 @@ def test_kelly_fracionado_bate_formula_e_deixa_sobra_no_cdi():
     for _ in range(300):
         u = rng.dirichlet(np.ones(4)) * rng.uniform(0, 1)
         assert obj(u) <= obj(wl) + 1e-12
-    # Kelly fraco: sobra no CDI
-    fraco = P.pesos_portfolio(CDI + _amostra(rng, 3000, np.full(4, 0.00002), S), "kelly",
-                              rf_por_periodo=CDI, encolher_media=0.0)
+    # Kelly fraco: sobra no caixa
+    fraco = P.pesos_portfolio(RF + _amostra(rng, 3000, np.full(4, 0.00002), S), "kelly",
+                              rf_por_periodo=RF, encolher_media=0.0)
     assert 0 < fraco["caixa"] < 1
 
 
@@ -274,7 +274,7 @@ def test_ledoit_wolf_preserva_vols_e_reduz_erro_com_poucos_dados():
 # Simulação e walk-forward
 # ---------------------------------------------------------------------------
 
-def test_simulacao_deriva_custo_e_caixa_no_cdi():
+def test_simulacao_deriva_custo_e_caixa_no_rf():
     R = np.array([[0.10, 0.00], [0.00, 0.00], [-0.05, 0.02]])
     # sem rebalancear: comprar e segurar 50/50
     res = P.simular_portfolio(R, [0.5, 0.5], rebalancear_a_cada=None, custo_giro=0.0)
@@ -318,12 +318,12 @@ def test_walk_forward_nao_olha_o_futuro():
 
 def test_walk_forward_ancorado_e_vol_alvo():
     rng = np.random.default_rng(7)
-    R = CDI + _amostra(rng, 1500, np.full(4, 0.0004), _cov_exemplo())
+    R = RF + _amostra(rng, 1500, np.full(4, 0.0004), _cov_exemplo())
     res = P.walk_forward_portfolio(R, "risk_parity", janela=500, rebalancear_a_cada=21,
-                                   ancorada=True, vol_alvo=0.05, rf_por_periodo=CDI)
+                                   ancorada=True, vol_alvo=0.05, rf_por_periodo=RF)
     vol = res["retornos"].std(ddof=1) * math.sqrt(252)
     assert 0.04 < vol < 0.06
-    assert all(p["caixa"] > 0 for p in res["pesos"])          # sem alavancagem: sobra no CDI
+    assert all(p["caixa"] > 0 for p in res["pesos"])          # sem alavancagem: sobra no caixa
     assert "janela" in _levanta(P.walk_forward_portfolio, R, janela=5)
     assert "desconhecidos" in _levanta(P.walk_forward_portfolio, R, janela=500, peso_maximo=0.3)
     assert "kelly" in _levanta(P.walk_forward_portfolio, R, "kelly", janela=500, vol_alvo=0.05)
@@ -355,14 +355,14 @@ def test_walk_forward_aceita_pandas_e_confere_datas():
     rng = np.random.default_rng(8)
     idx = pd.bdate_range("2018-01-01", periods=800)
     df = pd.DataFrame(rng.normal(0.0004, 0.01, (800, 3)), index=idx, columns=["a", "b", "c"])
-    res = P.walk_forward_portfolio(df, "hrp", janela=252, rf_por_periodo=pd.Series(CDI, index=idx))
+    res = P.walk_forward_portfolio(df, "hrp", janela=252, rf_por_periodo=pd.Series(RF, index=idx))
     assert res["indice"][0] == idx[252] and res["pesos"][0]["data"] == idx[252]
     assert set(res["pesos"][0]) >= {"a", "b", "c", "caixa"}
     assert res["pesos_atuais_ate"] == idx[-1]
     msg = _levanta(P.walk_forward_portfolio, df, janela=252,
-                   rf_por_periodo=pd.Series(CDI, index=idx + pd.Timedelta(days=1)))
+                   rf_por_periodo=pd.Series(RF, index=idx + pd.Timedelta(days=1)))
     assert "mesmas datas" in msg
-    comp = P.comparar_metodos(df, metodos=("hrp",), janela=252, rf_por_periodo=pd.Series(CDI, index=idx),
+    comp = P.comparar_metodos(df, metodos=("hrp",), janela=252, rf_por_periodo=pd.Series(RF, index=idx),
                               n_sim=100)
     hist = comp["resultados"]["hrp"]["pesos"]
     assert hist[0]["data"] == idx[252] and comp["resultados"]["hrp"]["indice"][0] == idx[252]
@@ -428,9 +428,9 @@ def test_perdas_conjuntas_sem_alarme_falso():
 def test_comparar_metodos_inclui_iguais_e_alerta_overfitting():
     rng = np.random.default_rng(11)
     T, N = 1000, 6
-    R = CDI + rng.normal(0.0002, 0.01, (T, N))            # todas iguais: nada bate 1/N
+    R = RF + rng.normal(0.0002, 0.01, (T, N))            # todas iguais: nada bate 1/N
     res = P.comparar_metodos(R, metodos=("max_sharpe", "risk_parity"), janela=250,
-                             rebalancear_a_cada=21, rf_por_periodo=CDI, n_sim=300)
+                             rebalancear_a_cada=21, rf_por_periodo=RF, n_sim=300)
     assert list(res["resultados"]) == ["iguais", "max_sharpe", "risk_parity"]
     assert len(res["resultados"]["iguais"]["retornos"]) == T - 250
     texto = " ".join(res["alertas"])

@@ -223,19 +223,19 @@ def test_bootstrap_detecta_diferenca_e_usa_bloco_automatico():
 
 
 def test_rf_muda_a_conclusao():
-    """CDI + 1% com vol 1% x CDI + 15% com vol 10%: com rf = 0, A parece muito melhor."""
+    """rf + 1% com vol 1% x rf + 15% com vol 10%: com rf = 0, A parece muito melhor."""
     rng = np.random.default_rng(3)
-    cdi = 1.11 ** (1 / 252) - 1
+    rf_t = 1.04 ** (1 / 252) - 1
     T = 252 * 5
-    a = cdi + 0.01 / 252 + rng.normal(0, 0.01 / math.sqrt(252), T)
-    b = cdi + 0.15 / 252 + rng.normal(0, 0.10 / math.sqrt(252), T)
-    assert C.teste_diferenca_sharpe(a, b)["p_valor"] < 1e-6
-    res = C.teste_diferenca_sharpe(a, b, rf_por_periodo=cdi)
+    a = rf_t + 0.01 / 252 + rng.normal(0, 0.01 / math.sqrt(252), T)
+    b = rf_t + 0.15 / 252 + rng.normal(0, 0.10 / math.sqrt(252), T)
+    assert C.teste_diferenca_sharpe(a, b)["p_valor"] < 1e-4
+    res = C.teste_diferenca_sharpe(a, b, rf_por_periodo=rf_t)
     assert res["p_valor"] > 0.2
-    assert sorted(C.model_confidence_set({"A": a, "B": b}, n_sim=500, rf_por_periodo=cdi)["mcs"]) == ["A", "B"]
-    tab = C.tabela_comparativa({"A": a, "B": b}, rf_por_periodo=cdi)
+    assert sorted(C.model_confidence_set({"A": a, "B": b}, n_sim=500, rf_por_periodo=rf_t)["mcs"]) == ["A", "B"]
+    tab = C.tabela_comparativa({"A": a, "B": b}, rf_por_periodo=rf_t)
     assert math.isclose(tab["metricas"]["A"]["sharpe"], res["sharpe_a"])
-    assert "11.0% ao ano" in C.formatar_tabela(tab)
+    assert "4.0% ao ano" in C.formatar_tabela(tab)
 
 
 def test_rf_invalido_levanta_erro():
@@ -266,8 +266,8 @@ def test_pandas_preserva_nomes_e_confere_datas():
     assert "mesmas datas" in _levanta(C.tabela_comparativa, {"mom": df["mom"], "rev": atrasada})
     assert "mesmas datas" in _levanta(C.teste_diferenca_sharpe, df["mom"], atrasada)
     assert "mesmas datas" in _levanta(C.teste_spa, df[["mom", "rev"]], atrasada)
-    cdi = pd.Series(0.0004, index=datas + pd.offsets.BDay(1))
-    assert "mesmas datas" in _levanta(C.comparar_pares, df, rf_por_periodo=cdi)
+    rf_t = pd.Series(0.0004, index=datas + pd.offsets.BDay(1))
+    assert "mesmas datas" in _levanta(C.comparar_pares, df, rf_por_periodo=rf_t)
 
 
 def test_spa_compara_sharpe_por_padrao():
@@ -283,15 +283,15 @@ def test_spa_compara_sharpe_por_padrao():
 def test_spa_contra_o_caixa():
     rng = np.random.default_rng(20)
     T = 1500
-    cdi = np.full(T, 1.11 ** (1 / 252) - 1)
-    cand = cdi[:, None] + rng.normal(0, 0.01, (T, 5))
-    cand[:, 4] += 0.0012                                   # só a última bate o CDI
-    for rf in (cdi, 0.0):                                  # benchmark constante = caixa nos dois casos
-        res = C.teste_spa(cand, cdi, n_sim=500, rf_por_periodo=rf)
+    rf_t = np.full(T, 1.04 ** (1 / 252) - 1)
+    cand = rf_t[:, None] + rng.normal(0, 0.01, (T, 5))
+    cand[:, 4] += 0.0012                                   # só a última bate o caixa
+    for rf in (rf_t, 0.0):                                  # benchmark constante = caixa nos dois casos
+        res = C.teste_spa(cand, rf_t, n_sim=500, rf_por_periodo=rf)
         assert res["melhor"] == "E5" and res["p_spa"] < 0.05
-    sem_vantagem = C.teste_spa(cand[:, :4], cdi, n_sim=500, rf_por_periodo=cdi)
+    sem_vantagem = C.teste_spa(cand[:, :4], rf_t, n_sim=500, rf_por_periodo=rf_t)
     assert sem_vantagem["p_spa"] > 0.05
-    assert "caixa" in _levanta(C.teste_spa, cand, cdi + rng.normal(0, 1e-5, T))
+    assert "caixa" in _levanta(C.teste_spa, cand, rf_t + rng.normal(0, 1e-5, T))
 
 
 def test_demonstracao_roda():
