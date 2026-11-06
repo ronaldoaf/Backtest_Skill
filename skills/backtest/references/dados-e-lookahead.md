@@ -28,11 +28,40 @@ Fonte, período, frequência, universo, tratamento de ajustes, tratamento de fal
 
 ## Passo 3: auditoria de look-ahead
 
+### Convenção de timing (use sempre esta)
+
+O sinal de *t* é calculado com dados até o fechamento de *t*, inclusive. A tabela diz como montar o retorno da estratégia em pandas, usando só valores passados em cada linha. `close` e `open` são as séries de preços; `sinal` vale -1, 0 ou 1 (ou o peso da posição).
+
+| Execução | Retorno da estratégia | Quando usar |
+|---|---|---|
+| Fechamento de *t+1* | `sinal.shift(2).fillna(0) * close.pct_change()` | Padrão para dados só de fechamento |
+| Abertura de *t+1* | Fórmula abaixo | Padrão quando há preço de abertura |
+| Fechamento de *t* | `sinal.shift(1).fillna(0) * close.pct_change()` | **Só** se o sinal puder ser calculado antes do leilão de fechamento (ex.: com o preço de minutos antes) e a ordem for executável no leilão. Diga ao usuário que essa premissa foi usada |
+
+Execução na abertura de *t+1*: a posição nova vale do pregão seguinte em diante, e a antiga ainda carrega o gap overnight.
+
+```python
+p_nova = sinal.shift(1).fillna(0)     # posição que vale da abertura ao fechamento de t
+p_antiga = sinal.shift(2).fillna(0)   # posição que carrega o gap do fechamento de t-1 à abertura de t
+gap = (open / close.shift(1) - 1).fillna(0)
+intradia = close / open - 1
+retorno_estrategia = (1 + p_antiga * gap) * (1 + p_nova * intradia) - 1
+```
+
+Custos entram por unidade de giro, no candle em que a posição muda, com `posicao` sendo a posição em vigor naquele candle (`p_nova` no caso da abertura, `sinal.shift(2).fillna(0)` no fechamento de *t+1*):
+
+```python
+giro = posicao.diff().abs().fillna(posicao.abs())   # inclui a entrada inicial
+retorno_liquido = retorno_estrategia - custo_por_lado * giro
+```
+
+`sinal * close.pct_change()`, sem `shift`, é look-ahead puro: a estratégia lucra com o movimento que gerou o próprio sinal. `sinal.shift(1) * close.pct_change()` executa no fechamento de *t*, ao mesmo preço do sinal, e só vale com a ressalva da última linha da tabela.
+
 ### Erros clássicos
 | Erro | Como aparece | Correção |
 |---|---|---|
-| Executar no mesmo preço do sinal | Sinal no `close[t]`, entrada no `close[t]` | Entrar em `open[t+1]` (ou `close[t+1]`) |
-| Esquecer o `shift` | `posicao = sinal` em vez de `sinal.shift(1)` | `retorno_estrategia = posicao.shift(1) * retorno` |
+| Executar no mesmo preço do sinal | Sinal no `close[t]`, entrada no `close[t]`, ou seja, `sinal.shift(1) * close.pct_change()` | Entrar em `open[t+1]` ou `close[t+1]`, pelas fórmulas da convenção de timing |
+| Esquecer o `shift` | `sinal * close.pct_change()` | Usar as fórmulas da convenção de timing |
 | Indicador centrado | `rolling(..., center=True)`, filtros suavizadores bidirecionais | Somente janelas que terminam em *t* |
 | `bfill` / interpolação | Preenche passado com valor futuro | Só `ffill` |
 | Fundamentos pela data de referência | Balanço do 4T usado em 31/12 | Usar data de **divulgação** (+1 dia) |

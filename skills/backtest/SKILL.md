@@ -9,7 +9,7 @@ Objetivo: descobrir se uma estratégia tem **vantagem real**, não produzir a cu
 
 ## Regras de ouro (nunca violar)
 
-1. **Nenhuma decisão usa informação do futuro.** Sinal no fechamento do candle *t* executa, no mínimo, na abertura de *t+1*.
+1. **Nenhuma decisão usa informação do futuro.** Sinal no fechamento do candle *t* executa, no mínimo, na abertura de *t+1*. Monte os retornos pela convenção de timing de `references/dados-e-lookahead.md`: `sinal.shift(1) * close.pct_change()` executa no fechamento de *t*, ao preço do próprio sinal, e viola esta regra (a única exceção, sinal calculado antes do leilão de fechamento, está na tabela).
 2. **Custos sempre ligados.** Nunca reporte um resultado "sem custos" como principal.
 3. **O holdout é tocado uma única vez.** Se você olhou e voltou a mexer, ele deixou de ser holdout; diga isso ao usuário.
 4. **Conte todas as tentativas.** Mantenha um registro de cada variação testada (parâmetros, filtros, ativos, períodos). Esse número entra na correção de múltiplos testes.
@@ -25,7 +25,7 @@ Siga os passos em ordem. Para cada um há detalhes e checklists em `references/`
 
 **2. Dados limpos e honestos.** Ver `references/dados-e-lookahead.md`. Verifique viés de sobrevivência (inclua deslistados), ajustes de proventos/splits, rolagem de futuros, fuso e timestamps, dados faltantes e outliers. Documente a fonte e o período.
 
-**3. Sem look-ahead.** Ver `references/dados-e-lookahead.md`. Audite o código: indicadores calculados só com dados até *t*, `shift` correto, dados fundamentalistas pela data de **publicação** e não pela data de referência, normalizações/escalas ajustadas só no treino, nenhum `fillna` para trás (`bfill`).
+**3. Sem look-ahead.** Ver `references/dados-e-lookahead.md`. Use a convenção de timing de lá e diga ao usuário qual execução foi assumida. Audite o código: indicadores calculados só com dados até *t*, `shift` correto, dados fundamentalistas pela data de **publicação** e não pela data de referência, normalizações/escalas ajustadas só no treino, nenhum `fillna` para trás (`bfill`).
 
 **4. Custos realistas.** Ver `references/custos.md`. Corretagem, emolumentos, spread, slippage, impacto de mercado proporcional ao volume, funding/aluguel, impostos. Rode também um cenário com custos dobrados: se a vantagem some, ela é frágil.
 
@@ -39,11 +39,11 @@ Siga os passos em ordem. Para cada um há detalhes e checklists em `references/`
 
 ### Fase 3: Provar que não é sorte
 
-**8. Testes estatísticos.** Ver `references/estatistica.md` e use `scripts/estatistica.py`. No mínimo:
-- comparar com benchmark (buy and hold, índice) e com estratégias aleatórias de mesma exposição e número de trades;
-- bootstrap/Monte Carlo dos trades ou retornos para intervalos de confiança do Sharpe e distribuição de drawdown;
-- teste de permutação dos sinais;
-- **Deflated Sharpe Ratio** usando o número total de tentativas registradas (regra de ouro 4), e **PBO** (probabilidade de overfitting do backtest) quando houver várias configurações candidatas.
+**8. Testes estatísticos.** Ver `references/estatistica.md` e use `scripts/estatistica.py`. Cada teste vale para uma amostra específica (tabela no início de `estatistica.md`). No mínimo:
+- comparar com benchmark (buy and hold, índice);
+- na série fora da amostra (walk-forward concatenado ou holdout): bootstrap para o IC do Sharpe e permutação circular dos sinais, que equivale a comparar com estratégias aleatórias de mesma exposição, número e duração de trades;
+- sobre o resultado otimizado (a melhor entre várias configurações): **Deflated Sharpe Ratio** com o número total de tentativas registradas (regra de ouro 4), **PBO** e a permutação com correção de seleção (`teste_permutacao_selecao`). Bootstrap e permutação simples aplicados à melhor de N configurações aprovam ruído: na melhor de 50 estratégias aleatórias, cerca de 80% dão p < 0,05;
+- Monte Carlo dos trades ou retornos para a distribuição de drawdown, que alimenta o passo 12.
 
 **9. Diferentes regimes e mercados.** Ver `references/validacao.md`. Quebre o resultado por regime (alta, baixa, lateral; alta e baixa volatilidade; crises) e por ano. Teste em ativos ou mercados parecidos sem reotimizar. Uma vantagem que só existe num ano ou num ativo não é vantagem.
 
@@ -74,4 +74,4 @@ Siga os passos em ordem. Para cada um há detalhes e checklists em `references/`
 | `references/metricas.md` | Passo 10: definições e limites das métricas |
 | `references/incubacao-e-monitoramento.md` | Passos 11 e 12 |
 | `references/relatorio.md` | Modelo do relatório final |
-| `scripts/estatistica.py` | Funções prontas: métricas, bootstrap, permutação, DSR, PBO |
+| `scripts/estatistica.py` | Funções prontas: métricas, bootstrap, permutação simples e com correção de seleção, DSR, PBO |

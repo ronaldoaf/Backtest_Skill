@@ -12,3 +12,7 @@ Skill para o Claude executar backtests de estratégias de trading e investimento
 - **Claude.ai:** compacte a pasta `skills/backtest/` em um .zip e envie em *Configurações > Capacidades > Skills*.
 
 O script `scripts/estatistica.py` depende apenas de `numpy`. Rode `python skills/backtest/scripts/estatistica.py` para ver uma demonstração.
+
+## Testes
+
+`python -m pytest tests` (ou `python tests/test_estatistica.py`, sem pytest) roda os testes de regressão do script e confere a fórmula de execução na abertura de *t+1* contra uma simulação evento a evento (essa parte usa `pandas`, se estiver instalado).
