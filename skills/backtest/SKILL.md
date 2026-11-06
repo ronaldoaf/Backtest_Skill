@@ -54,9 +54,9 @@ SPA e MCS comparam Sharpe por padrão (`criterio="sharpe"`), para que alavancage
 
 **Portfólio de estratégias.** Quando o usuário for operar várias estratégias juntas e perguntar quanto capital dar a cada uma, siga `references/portfolio.md` e use `scripts/portfolio.py`. Otimizar pesos é otimizar parâmetros: a referência é 1/N, que não estima nada e é difícil de bater fora da amostra.
 - Entrada: retornos **fora da amostra** de cada estratégia (walk-forward concatenado), alinhados, com o CDI em `rf_por_periodo` (o caixa rende CDI; Sharpe e Kelly em excesso dele).
-- Primeiro `analise_diversificacao`: pares redundantes, perdas conjuntas nos piores dias além do que a correlação explica, contribuição de risco e número efetivo de apostas.
+- Primeiro `analise_diversificacao`: pares redundantes, perdas conjuntas nos piores dias além do que a dependência comum explica, contribuição de risco e número efetivo de apostas. Tirar estratégias redundantes olhando a amostra inteira conta como tentativa. Com menos de ~500 períodos, a ausência de alerta de perdas conjuntas não prova nada.
 - Depois `comparar_metodos` (walk-forward com custo de rebalanceamento, limites de peso, teste contra 1/N com Holm, MCS e alertas). Prefira métodos que só usam a covariância (`risk_parity`, `hrp`, `vol_inversa`); `max_sharpe` e `kelly` dependem de médias e só valem se baterem 1/N com folga. Kelly sempre fracionado.
-- Fique com 1/N ou o método mais simples dentro do MCS, salvo vitória significativa. Cada método e parâmetro testado conta como tentativa (regra de ouro 4), e o portfólio escolhido passa pelos passos 8 a 12 como uma estratégia.
+- Fique com 1/N ou o método mais simples dentro do MCS, salvo vitória significativa. Opere os `pesos_atuais` do walk-forward do método escolhido (mesmos parâmetros). Cada método e parâmetro testado conta como tentativa (regra de ouro 4), e o portfólio escolhido passa pelos passos 8 a 12 como uma estratégia.
 
 **9. Diferentes regimes e mercados.** Ver `references/validacao.md`. Quebre o resultado por regime (alta, baixa, lateral; alta e baixa volatilidade; crises) e por ano. Teste em ativos ou mercados parecidos sem reotimizar. Uma vantagem que só existe num ano ou num ativo não é vantagem.
 

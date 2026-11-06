@@ -68,7 +68,7 @@ Se houver portfólio de estratégias (ver `portfolio.md`):
 | 1/N | | | | | — | — |
 | <escolhido> | | | | | | |
 
-- Correlação média, pares redundantes, perdas conjuntas (observado x normal), apostas efetivas:
+- Correlação média, pares redundantes, perdas conjuntas (observado x esperado), apostas efetivas:
 - Walk-forward dos pesos (janela, rebalanceamento, faixa, custo_giro, limites, vol_alvo) e métodos testados:
 - MCS (90%), método escolhido, pesos atuais e critério de desempate:
 
