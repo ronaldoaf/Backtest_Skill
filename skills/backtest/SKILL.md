@@ -45,11 +45,12 @@ Siga os passos em ordem. Para cada um há detalhes e checklists em `references/`
 - sobre o resultado otimizado (a melhor entre várias configurações): **Deflated Sharpe Ratio** com o número total de tentativas registradas (regra de ouro 4), **PBO** e a permutação com correção de seleção (`teste_permutacao_selecao`). Bootstrap e permutação simples aplicados à melhor de N configurações aprovam ruído: na melhor de 50 estratégias aleatórias, cerca de 80% dão p < 0,05;
 - Monte Carlo dos trades ou retornos para a distribuição de drawdown, que alimenta o passo 12.
 
-**Comparando estratégias.** Quando a pergunta for "qual é melhor?" (variantes, nova contra a atual, várias candidatas, estratégia contra benchmark), siga `references/comparacao.md` e use `scripts/comparacao.py`. Nunca declare uma vencedora só pela tabela de métricas: alinhe as séries nas mesmas datas, compare fora da amostra e use o teste que corresponde à pergunta:
-- duas estratégias definidas antes de ver os dados: `teste_diferenca_sharpe` (Ledoit-Wolf, HAC) ou `bootstrap_diferenca_sharpe` em amostras curtas;
+**Comparando estratégias.** Quando a pergunta for "qual é melhor?" (variantes, nova contra a atual, várias candidatas, estratégia contra benchmark), siga `references/comparacao.md` e use `scripts/comparacao.py`. Nunca declare uma vencedora só pela tabela de métricas: alinhe as séries nas mesmas datas (um DataFrame com uma coluna por estratégia), passe o CDI por período em `rf_por_periodo`, compare fora da amostra e use o teste que corresponde à pergunta:
+- duas estratégias definidas antes de ver os dados: `teste_diferenca_sharpe` (Ledoit-Wolf, HAC); com menos de ~120 períodos, `bootstrap_diferenca_sharpe` (estudentizado), porque o HAC rejeita demais em amostras curtas;
 - várias, todas contra todas: `comparar_pares` (p-valores de Holm);
 - a melhor de N contra um benchmark: `teste_spa` com todas as candidatas, inclusive as descartadas;
 - escolher entre muitas: `model_confidence_set`. Se o conjunto final tiver várias estratégias, diga que os dados não as distinguem e desempate por simplicidade, custo ou capacidade (ou combine-as).
+SPA e MCS comparam Sharpe por padrão (`criterio="sharpe"`), para que alavancagem não pareça vantagem.
 
 **9. Diferentes regimes e mercados.** Ver `references/validacao.md`. Quebre o resultado por regime (alta, baixa, lateral; alta e baixa volatilidade; crises) e por ano. Teste em ativos ou mercados parecidos sem reotimizar. Uma vantagem que só existe num ano ou num ativo não é vantagem.
 

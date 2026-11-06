@@ -53,10 +53,11 @@ Se houve comparação entre estratégias (ver `comparacao.md`):
 
 | Comparação | Diferença de Sharpe (IC 95%) | p-valor | Método |
 |---|---|---|---|
-| A x B | | | HAC / bootstrap pareado |
+| A x B | | | HAC / bootstrap estudentizado |
 | Melhor de N x benchmark | | p_spa = | SPA |
 | MCS (90%) | {estratégias que ficam} | | T_max |
 
+- Taxa livre de risco usada no Sharpe (ex.: CDI diário):
 - Correlação entre as estratégias:
 - Critério de desempate, se os testes não distinguem:
 
