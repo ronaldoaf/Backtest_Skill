@@ -23,7 +23,7 @@ SKILL = RAIZ / "skills" / "backtest"
 
 # Nomes entre crases que são código de exemplo do usuário, não da skill.
 FORA_DO_CODIGO = {"p_nova", "p_antiga", "retorno_estrategia", "retorno_liquido", "custo_por_lado",
-                  "capital_final", "capital_inicial", "periodos_por_ano", "cdi_anual",
+                  "capital_final", "capital_inicial", "periodos_por_ano", "taxa_anual",
                   "ganho_médio", "perda_média"}
 
 

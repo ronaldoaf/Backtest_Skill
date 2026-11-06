@@ -5,9 +5,9 @@ Skill para o Claude executar backtests de estratégias de trading e investimento
 ## O que a skill cobre
 
 - **Roteiro de 12 passos** ([`SKILL.md`](skills/backtest/SKILL.md)): hipótese, dados limpos, sem look-ahead, custos, divisão de dados, walk-forward, robustez, testes estatísticos, regimes, métricas, paper trading e monitoramento, com regras de ouro e um veredito obrigatório (*Rejeitada*, *Inconclusiva*, *Promissora* ou *Aprovada com tamanho reduzido*).
-- **Referências** ([`references/`](skills/backtest/references)): checklists de cada passo, custos e imposto de renda no Brasil, testes estatísticos, comparação de estratégias, portfólio e o modelo do relatório final.
+- **Referências** ([`references/`](skills/backtest/references)): checklists de cada passo, custos por mercado (cripto, forex, commodities, ações americanas), testes estatísticos, comparação de estratégias, portfólio e o modelo do relatório final.
 - **Scripts** ([`scripts/`](skills/backtest/scripts), só `numpy`):
-  - `backtest.py`: motor vetorizado com a convenção de timing (abertura ou fechamento de *t+1*), custos por giro, caixa no CDI e extração de trades; sensibilidade e breakeven de custos; custos da B3 e imposto de renda; walk-forward de parâmetros; robustez e mapa de calor; regimes e ano a ano; testes de look-ahead; alvo de volatilidade e Kelly.
+  - `backtest.py`: motor vetorizado com a convenção de timing (abertura ou fechamento de *t+1*), custos por giro, carregamento (funding, swap, aluguel), rendimento do caixa e extração de trades; sensibilidade e breakeven de custos; walk-forward de parâmetros; robustez e mapa de calor; regimes e ano a ano; testes de look-ahead; alvo de volatilidade e Kelly.
   - `estatistica.py`: métricas, bootstrap, permutação simples e com correção de seleção, Deflated Sharpe Ratio, PBO e Monte Carlo de drawdown.
   - `comparacao.py`: diferença de Sharpe (Ledoit-Wolf e bootstrap estudentizado), pares com Holm, Hansen SPA/White Reality Check e Model Confidence Set.
   - `portfolio.py`: 1/N, vol inversa, risk parity, HRP, mínima variância, max Sharpe e Kelly fracionado, com walk-forward dos pesos, custos de rebalanceamento, limites, diversificação e alertas de overfitting.
@@ -28,7 +28,8 @@ Para ver o fluxo inteiro rodando:
 pip install numpy pandas
 cd skills/backtest/scripts
 python exemplo_completo.py              # dados sintéticos
-python exemplo_completo.py precos.csv   # colunas data, abertura, fechamento e, opcional, cdi (% ao dia, série 12 do BCB)
+python exemplo_completo.py precos.csv   # colunas data, abertura, fechamento e, opcional, rf (% ao ano, ex.: DTB3 do FRED)
+python exemplo_completo.py btc.csv --periodos=365   # cripto
 ```
 
 Cada script também roda sozinho (`python backtest.py`, `python estatistica.py`, ...) com uma demonstração.
@@ -41,10 +42,10 @@ python ferramentas/validar_skill.py   # cabeçalho, arquivos citados e nomes de 
 python -m pytest tests                # ou python tests/test_<módulo>.py, sem pytest
 ```
 
-Os testes conferem as fórmulas de execução contra uma simulação evento a evento, a calibração dos testes estatísticos sob a hipótese nula, as regras de imposto, o walk-forward sem olhar o futuro e o exemplo de ponta a ponta. O workflow em `.github/workflows/testes.yml` roda tudo isso a cada push e pull request.
+Os testes conferem as fórmulas de execução contra uma simulação evento a evento, a calibração dos testes estatísticos sob a hipótese nula, os custos de carregamento, o walk-forward sem olhar o futuro e o exemplo de ponta a ponta. O workflow em `.github/workflows/testes.yml` roda tudo isso a cada push e pull request.
 
 ## Limitações
 
 - O motor é vetorizado e diário: ordens limitadas, stops intradiários, filas e execução parcial pedem um motor orientado a eventos (a skill orienta a usar um nesses casos).
-- Valores de tarifas e regras de imposto são de referência: confira os vigentes.
-- Não há fonte de dados embutida: os preços (ajustados por proventos, sem viés de sobrevivência) e o CDI vêm do usuário.
+- Os custos por mercado são valores típicos de referência: confira os da corretora ou exchange. Impostos dependem da jurisdição e não são simulados.
+- Não há fonte de dados embutida: os preços (ajustados por dividendos e splits, sem viés de sobrevivência) e a taxa livre de risco, se usada, vêm do usuário.

@@ -9,13 +9,15 @@
 
 ### Ajustes de preço
 - Splits, grupamentos e bonificações devem estar ajustados.
-- Dividendos/JCP: para retorno total, use preço ajustado ou some os proventos no caixa. Para sinais baseados em níveis de preço (ex.: rompimento de máxima), confira se o ajuste não cria níveis que nunca foram negociados.
+- Dividendos: para retorno total, use preço ajustado ou some os proventos no caixa. Para sinais baseados em níveis de preço (ex.: rompimento de máxima), confira se o ajuste não cria níveis que nunca foram negociados.
 - Ordens limitadas e stops devem ser simulados sobre o preço **não ajustado** daquele dia, ou com ajuste consistente.
 - Futuros: use série contínua com rolagem documentada (back-adjusted para sinais, contratos reais para P&L), e inclua o custo da rolagem.
 
 ### Tempo
 - Padronize fuso horário e saiba se o timestamp marca abertura ou fechamento do candle.
 - Feriados e pregões curtos: não preencha com valores inventados.
+- Cripto negocia 24/7: escolha e documente a hora do "fechamento" diário (ex.: 00:00 UTC) e use a mesma em todos os ativos. Forex fecha às 17h de Nova York; candles diários de fontes diferentes cortam em horas diferentes.
+- Sem pregão separado (cripto), a abertura é o fechamento anterior: a execução na abertura de *t+1* equivale ao fechamento de *t* mais o atraso de envio da ordem; prefira `fechamento_t1` ou dados intradiários.
 - Dados intradiários: confira horário de leilão de abertura/fechamento.
 
 ### Integridade
@@ -38,7 +40,7 @@ O sinal de *t* é calculado com dados até o fechamento de *t*, inclusive. A tab
 | Abertura de *t+1* | Fórmula abaixo | Padrão quando há preço de abertura |
 | Fechamento de *t* | `sinal.shift(1).fillna(0) * close.pct_change()` | **Só** se o sinal puder ser calculado antes do leilão de fechamento (ex.: com o preço de minutos antes) e a ordem for executável no leilão. Diga ao usuário que essa premissa foi usada |
 
-`retornos_estrategia` em `scripts/backtest.py` implementa as três linhas (`execucao="abertura_t1"`, `"fechamento_t1"` ou `"fechamento_t"`), com custos e caixa no CDI, e foi conferida contra uma simulação evento a evento. Use-a em vez de reescrever as fórmulas; elas ficam abaixo para auditoria.
+`retornos_estrategia` em `scripts/backtest.py` implementa as três linhas (`execucao="abertura_t1"`, `"fechamento_t1"` ou `"fechamento_t"`), com custos, carregamento e rendimento do caixa, e foi conferida contra uma simulação evento a evento. Use-a em vez de reescrever as fórmulas; elas ficam abaixo para auditoria.
 
 Execução na abertura de *t+1*: a posição nova vale do pregão seguinte em diante, e a antiga ainda carrega o gap overnight.
 

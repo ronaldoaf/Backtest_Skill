@@ -2,7 +2,7 @@
 
 Pergunta central: **qual a chance de um resultado tão bom quanto este aparecer por sorte, dado tudo o que foi tentado?** As funções citadas estão em `scripts/estatistica.py`.
 
-**CDI.** No Brasil, Sharpe é em excesso do CDI. `resumo_metricas` e `bootstrap_metricas` recebem `rf_por_periodo`. Nas demais funções, passe a série já em excesso: `deflated_sharpe_ratio` e `pbo_cscv` com `retornos − cdi`, e nas permutações `retornos_ativo = close.pct_change() − cdi` quando a posição comprada é financiada pelo caixa. `walk_forward_parametros` (`scripts/backtest.py`) devolve a matriz de todas as configurações e os Sharpes das tentativas prontos para estes testes.
+**Taxa livre de risco.** Quando o caixa rende juros (T-bill em USD), meça o Sharpe em excesso dela. `resumo_metricas` e `bootstrap_metricas` recebem `rf_por_periodo`. Nas demais funções, passe a série já em excesso: `deflated_sharpe_ratio` e `pbo_cscv` com `retornos − rf`, e nas permutações `retornos_ativo = close.pct_change() − rf` quando a posição comprada é financiada pelo caixa. Se o caixa não rende (comum em cripto), use rf = 0. `walk_forward_parametros` (`scripts/backtest.py`) devolve a matriz de todas as configurações e os Sharpes das tentativas prontos para estes testes.
 
 ## 0. Em que amostra cada teste vale
 

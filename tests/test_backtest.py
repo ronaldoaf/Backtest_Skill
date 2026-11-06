@@ -61,7 +61,7 @@ def test_fechamento_t1_e_fechamento_t():
     assert np.allclose(t0["retorno"], np.r_[0, sinal[:-1]] * r)
 
 
-def test_custos_por_giro_e_caixa_no_cdi():
+def test_custos_por_giro_e_caixa_rende_rf():
     rng, close, abertura = _precos(3)
     sinal = _sinal_com_viradas(rng, len(close))
     sem = B.retornos_estrategia(sinal, close, abertura)
@@ -126,7 +126,7 @@ def test_trades_simples():
 
 
 # ---------------------------------------------------------------------------
-# Custos e imposto
+# Custos e carregamento
 # ---------------------------------------------------------------------------
 
 def test_breakeven_zera_o_excesso_medio():
@@ -142,40 +142,30 @@ def test_breakeven_zera_o_excesso_medio():
     assert "breakeven" in B.formatar_sensibilidade(s)
 
 
-def test_custo_b3():
-    c = B.custo_por_lado_b3(spread_bps=10, slippage_bps=5, corretagem_por_ordem=5, valor_medio_ordem=10_000)
-    assert math.isclose(c["total"], 0.0003 + 0.0005 + 0.0005 + 0.0005)
+def test_custo_por_lado_soma_componentes():
+    c = B.custo_por_lado(comissao=0.0005, spread_bps=10, slippage_bps=5, comissao_fixa=5,
+                         valor_medio_ordem=10_000, taxas=0.00002)
+    assert math.isclose(c["total"], 0.0005 + 0.0005 + 0.0005 + 0.0005 + 0.00002)
 
 
-def test_imposto_compensa_prejuizo_isencao_e_darf_minimo():
-    ir = B.imposto_renda_mensal([1000, -3000, 5000, 1000], aliquota=0.15)
-    assert np.allclose(ir["imposto"], [150, 0, 300, 150])
-    # mês isento não paga nem consome prejuízo
-    ir = B.imposto_renda_mensal([-1000, 3000, 3000], vendas_por_mes=[50_000, 15_000, 50_000],
-                                isencao_vendas=20_000)
-    assert np.allclose(ir["imposto"], [0, 0, 300]) and ir["isento"].tolist() == [False, True, False]
-    # imposto abaixo de R$ 10 passa para o mês seguinte
-    ir = B.imposto_renda_mensal([40, 40, 0], aliquota=0.15)
-    assert np.allclose(ir["imposto"], [0, 12, 0])
-
-
-def test_simular_ir_sem_aliquota_nao_muda_e_com_aliquota_reduz():
+def test_carregamento_funding_e_aluguel():
+    rng, close, abertura = _precos(8, 300)
+    sinal = _sinal_com_viradas(rng, 300)
+    base = B.retornos_estrategia(sinal, close, abertura)
+    fin = B.retornos_estrategia(sinal, close, abertura, financiamento_por_periodo=0.0003)
+    pos = np.asarray(base["posicao"])
+    assert np.allclose(base["retorno"] - fin["retorno"], 0.0003 * pos)   # comprado paga, vendido recebe
+    alug = B.retornos_estrategia(sinal, close, abertura, aluguel_por_periodo=0.0002)
+    assert np.allclose(base["retorno"] - alug["retorno"], 0.0002 * np.maximum(-pos, 0))
     try:
-        import pandas as pd
-    except ImportError:
-        return
-    rng, close, abertura = _precos(8, 600)
-    sinal = _sinal_com_viradas(rng, 600)
-    res = B.retornos_estrategia(sinal, close, abertura, custo_por_lado=0.0005)
-    meses = pd.bdate_range("2020-01-01", periods=600).to_period("M")
-    zero = B.simular_ir(res, meses, aliquota=0.0)
-    assert np.allclose(zero["retorno"], res["retorno"])
-    ir = B.simular_ir(res, meses, aliquota=0.15)
-    lucros = ir["lucro_por_mes"]
-    if lucros.sum() > 0:
-        assert ir["imposto_total"] > 0 and ir["capital_final"] < zero["capital_final"]
-    esperado = B.imposto_renda_mensal(lucros, 0.15)["imposto"]
-    assert np.allclose(ir["imposto_por_mes"], esperado)
+        B.retornos_estrategia(sinal, close, abertura, aluguel_por_periodo=0.05)
+    except ValueError as e:
+        assert "taxa anual" in str(e)
+    else:
+        raise AssertionError("taxa anual deveria ser recusada")
+    com = B.sensibilidade_custos(sinal, close, abertura, aluguel_por_periodo=0.0002)
+    sem = B.sensibilidade_custos(sinal, close, abertura)
+    assert com["custo_breakeven"] < sem["custo_breakeven"]
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +295,8 @@ def test_exemplo_completo_roda():
     sys.path.insert(0, str(SCRIPTS))
     import exemplo_completo
     res = exemplo_completo.main(rapido=True)
+    cripto = exemplo_completo.main(rapido=True, periodos_por_ano=365)
+    assert cripto["wf"]["janelas"][0]["inicio_teste"] == 730
     assert res["trunc"]["ok"]
     assert res["veredito"] in ("Rejeitada", "Inconclusiva", "Promissora (incubar)",
                                "Aprovada para operar com tamanho reduzido")

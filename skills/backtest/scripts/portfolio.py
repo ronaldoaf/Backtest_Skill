@@ -14,11 +14,11 @@ Convenções (as mesmas de `comparacao.py`):
   líquidos dos custos dela, **alinhados nas mesmas datas** e, de preferência, **fora da
   amostra** (o walk-forward concatenado de cada estratégia). Otimizar pesos sobre curvas
   dentro da amostra soma o overfitting de cada estratégia ao da alocação.
-- `rf_por_periodo`: taxa livre de risco POR PERÍODO (número ou série alinhada). No Brasil, o
-  CDI: `(1 + cdi_anual) ** (1 / 252) - 1` ou a série diária. O caixa não alocado rende rf, o
+- `rf_por_periodo`: taxa livre de risco POR PERÍODO (número ou série alinhada). Em USD, o
+  T-bill: `(1 + taxa_anual) ** (1 / 252) - 1` ou a série diária. O caixa não alocado rende rf, o
   caixa tomado emprestado (alavancagem) custa rf, e Sharpe e Kelly usam retornos em excesso.
 - Pesos são frações do capital total. Nos métodos sem caixa somam 1; em `kelly` e com
-  `vol_alvo`, a sobra (1 − soma) fica no CDI.
+  `vol_alvo`, a sobra (1 − soma) fica no caixa, rendendo rf.
 - `periodos_por_ano`: 252 diário, 365 cripto, 52 semanal, 12 mensal.
 
 Métodos de alocação (`METODOS`):
@@ -30,9 +30,9 @@ Métodos de alocação (`METODOS`):
 - "min_variancia": menor variância com os limites de peso. Usa só a covariância.
 - "max_sharpe": maior Sharpe estimado. Usa médias, que são o insumo mais ruidoso: é o método
   mais propenso a overfitting. As médias são encolhidas para a média comum (`encolher_media`).
-- "kelly": Kelly fracionado (padrão meio Kelly) em excesso do CDI, com alavancagem limitada.
+- "kelly": Kelly fracionado (padrão meio Kelly) em excesso de rf, com alavancagem limitada.
   A fração entra na otimização (sem limites ativos dá f × Kelly completo) e os limites valem
-  para os pesos finais. A sobra fica no CDI. Também usa médias: mesmo cuidado de "max_sharpe".
+  para os pesos finais. A sobra fica no caixa. Também usa médias: mesmo cuidado de "max_sharpe".
 Todos (menos "iguais") usam a covariância com encolhimento de Ledoit-Wolf
 (`covariancia_ledoit_wolf`), que reduz o erro de estimação quando há poucos períodos por
 estratégia.
@@ -53,10 +53,10 @@ Uso rápido:
     from portfolio import comparar_metodos, formatar_comparacao, analise_diversificacao
 
     df = pd.DataFrame({"momentum": r_mom, "reversao": r_rev, "carry": r_carry}).dropna()
-    cdi = cdi_diario.reindex(df.index)
-    print(analise_diversificacao(df, rf_por_periodo=cdi))
+    rf = tbill_diario.reindex(df.index)
+    print(analise_diversificacao(df, rf_por_periodo=rf))
     res = comparar_metodos(df, janela=504, rebalancear_a_cada=21, custo_giro=0.001,
-                           peso_max=0.5, rf_por_periodo=cdi)
+                           peso_max=0.5, rf_por_periodo=rf)
     print(formatar_comparacao(res))                  # inclui os pesos atuais de cada método
     res["resultados"]["risk_parity"]["pesos_atuais"]  # {nome: peso, "caixa": ...}
 
@@ -321,7 +321,7 @@ def _max_sharpe(mu, S, lo, hi, max_iter: int = 200, tol: float = 1e-10):
     (condições de KKT; o Sharpe não muda com a escala). Itera g ← variância / média do último
     w até estabilizar, partindo do melhor entre mínima variância, 1/N e a carteira de maior
     média (que garante achar uma carteira de média positiva sempre que ela existir, mesmo com
-    1/N abaixo do CDI). Sem nenhuma carteira viável de média positiva, devolve a mínima
+    1/N abaixo de rf). Sem nenhuma carteira viável de média positiva, devolve a mínima
     variância.
     """
     proj = lambda v: _projetar(v, lo, hi, 1.0)  # noqa: E731
@@ -364,7 +364,7 @@ def pesos_portfolio(retornos, metodo: str = "risk_parity", nomes=None, peso_min=
     por `fracao_kelly`.
     `fracao_kelly` (f, padrão 0,5): maximiza mu'w − w'Sw / (2f), que sem limites ativos dá
     exatamente f × Kelly completo. `alavancagem_max`: soma máxima dos pesos no Kelly (padrão 1,
-    sem alavancagem); a sobra fica no CDI. Os limites valem para os pesos finais.
+    sem alavancagem); a sobra fica no caixa, rendendo rf. Os limites valem para os pesos finais.
     `orcamento_risco`: em "risk_parity", a fração do risco de cada estratégia (padrão igual;
     lista na ordem das colunas ou dict {nome: fração}).
 
@@ -432,8 +432,8 @@ def _pesos(R, rf, metodo, peso_min, peso_max, encolher_cov, encolher_media,
     mu = _media_encolhida((R - rf[:, None]).mean(axis=0), encolher_media)
     if metodo == "max_sharpe":
         return _max_sharpe(mu, S, lo, hi)
-    # Kelly fracionado: maximiza mu'w − w'Sw / (2f) (crescimento aproximado em excesso do CDI,
-    # com aversão 1/f), com os limites nos pesos finais e soma até alavancagem_max; sobra no CDI.
+    # Kelly fracionado: maximiza mu'w − w'Sw / (2f) (crescimento aproximado em excesso de rf,
+    # com aversão 1/f), com os limites nos pesos finais e soma até alavancagem_max; sobra no caixa.
     # Sem limites ativos dá f × S⁻¹mu. Multiplicar o Kelly limitado por f, em vez disso,
     # deixaria a exposição sempre abaixo de f × alavancagem_max e violaria peso_min.
     projk = lambda v: _projetar_ate(v, lo, hi, alavancagem_max)  # noqa: E731
@@ -474,8 +474,8 @@ def simular_portfolio(retornos, pesos, nomes=None, rebalancear_a_cada: int | Non
                       periodos_por_ano: int = 252) -> dict:
     """Retornos de um portfólio com pesos-alvo fixos, deriva entre rebalanceamentos e custos.
 
-    `pesos`: dict {nome: peso} ou vetor na ordem das colunas. Soma < 1 deixa caixa no CDI;
-    soma > 1 toma emprestado ao CDI.
+    `pesos`: dict {nome: peso} ou vetor na ordem das colunas. Soma < 1 deixa caixa rendendo rf;
+    soma > 1 toma emprestado a rf.
     `rebalancear_a_cada`: períodos entre rebalanceamentos (None = só a alocação inicial).
     `custo_giro`: custo por unidade de capital movimentada entre estratégias (0,001 = 10 bps
     sobre o valor transferido). É custo adicional ao das estratégias: redimensionar uma
@@ -530,7 +530,7 @@ def walk_forward_portfolio(retornos, metodo: str = "risk_parity", nomes=None, ja
     `janela` (os primeiros `janela` períodos só servem para estimar).
     `vol_alvo`: volatilidade anual desejada (ex.: 0.10). Escala os pesos pela vol estimada na
     janela, com soma limitada a `alavancagem_max` (padrão 1, sem alavancagem); a sobra fica no
-    CDI. Não combina com "kelly" (o alvo de vol substituiria o tamanho de Kelly).
+    caixa. Não combina com "kelly" (o alvo de vol substituiria o tamanho de Kelly).
     `kw_metodo`: repassados a `pesos_portfolio` (peso_min, peso_max, encolher_media, ...).
 
     Retorna:
@@ -932,17 +932,17 @@ def formatar_comparacao(res: dict, casas: int = 3) -> str:
 if __name__ == "__main__":
     rng = np.random.default_rng(7)
     T = 252 * 8
-    cdi = 1.11 ** (1 / 252) - 1
+    rf = 1.04 ** (1 / 252) - 1
     fator = rng.normal(0, 0.008, T)                       # risco comum (ex.: bolsa)
     choque = np.where(rng.random(T) < 0.03, rng.normal(-0.018, 0.004, T), 0.0)  # dias de crise
-    carry = cdi + 0.0009 + 0.3 * fator + choque + rng.normal(0, 0.006, T)
+    carry = rf + 0.0009 + 0.3 * fator + choque + rng.normal(0, 0.006, T)
     r = {
-        "tendencia": cdi + 0.0004 + 0.3 * fator + rng.normal(0, 0.007, T),
-        "reversao": cdi + 0.0003 - 0.2 * fator + rng.normal(0, 0.006, T),
+        "tendencia": rf + 0.0004 + 0.3 * fator + rng.normal(0, 0.007, T),
+        "reversao": rf + 0.0003 - 0.2 * fator + rng.normal(0, 0.006, T),
         "carry": carry,
         "carry_2": carry + rng.normal(-0.0001, 0.003, T),  # quase a mesma aposta que carry
-        "vol_vendida": cdi + 0.0009 + 0.2 * fator + 0.8 * choque + rng.normal(0, 0.005, T),
+        "vol_vendida": rf + 0.0009 + 0.2 * fator + 0.8 * choque + rng.normal(0, 0.005, T),
     }
     print(formatar_comparacao(comparar_metodos(
         r, janela=504, rebalancear_a_cada=21, custo_giro=0.001, peso_max=0.4,
-        rf_por_periodo=cdi, n_sim=500)))
+        rf_por_periodo=rf, n_sim=500)))

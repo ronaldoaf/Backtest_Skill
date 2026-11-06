@@ -40,4 +40,4 @@ Defina **por escrito, antes de operar**, as regras de desligamento. Decidir isso
 
 ### Dimensionamento
 - Começar pequeno e aumentar em degraus conforme o desempenho ao vivo confirma o backtest.
-- Considerar fração de Kelly bem conservadora (ex.: ≤ 1/4 de Kelly) ou volatility targeting, nunca o Kelly cheio estimado do backtest. `posicao_vol_alvo` escala o sinal pela volatilidade estimada só com o passado (passe o resultado a `retornos_estrategia`); `kelly_estrategia` dá o Kelly em excesso do CDI com o IC 95%, que costuma ir de perto de zero a valores absurdos e mostra por que o Kelly cheio é perigoso.
+- Considerar fração de Kelly bem conservadora (ex.: ≤ 1/4 de Kelly) ou volatility targeting, nunca o Kelly cheio estimado do backtest. `posicao_vol_alvo` escala o sinal pela volatilidade estimada só com o passado (passe o resultado a `retornos_estrategia`); `kelly_estrategia` dá o Kelly em excesso da taxa livre de risco com o IC 95%, que costuma ir de perto de zero a valores absurdos e mostra por que o Kelly cheio é perigoso.

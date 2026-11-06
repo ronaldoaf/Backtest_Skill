@@ -8,11 +8,12 @@ Faz o que a skill pede em texto, para que o código de cada backtest não reinve
 as mesmas partes:
 - `retornos_estrategia`: retorno líquido pela convenção de timing de
   `references/dados-e-lookahead.md` (abertura de t+1, fechamento de t+1 ou fechamento de t),
-  custos por unidade de giro, caixa rendendo CDI e a lista de trades (para `metricas_trades` e
+  custos por unidade de giro, custo de carregamento (funding, swap, aluguel para vender a
+  descoberto), caixa rendendo a taxa livre de risco e a lista de trades (para `metricas_trades` e
   `monte_carlo_drawdown`).
 - `sensibilidade_custos`: tabela de custos x0, x1, x2, x3 e custo de breakeven (passo 4).
-- `custo_por_lado_b3`, `simular_ir`, `imposto_renda_mensal`: custos e imposto de renda no
-  mercado brasileiro (ver `references/custos.md`). Valores de referência: confira os vigentes.
+- `custo_por_lado`: soma comissão, taxas, meio spread e slippage num custo por lado (ver
+  `references/custos.md`, com referências para cripto, forex, commodities e ações americanas).
 - `walk_forward_parametros`: otimiza na janela k e testa na k+1, devolvendo a série fora da
   amostra concatenada, a eficiência, os parâmetros escolhidos e a matriz de todas as
   tentativas (para DSR, PBO e permutação com seleção) (passo 6).
@@ -28,15 +29,16 @@ Convenções:
   fração do capital (ex.: 0.5, ou 1.5 com alavancagem). NaN no sinal (aquecimento de
   indicadores) vira 0, sem posição.
 - `close`, `abertura`: preços do mesmo ativo nas mesmas datas, sem NaN.
-- `rf_por_periodo`: CDI por período (número ou série alinhada), como em `comparacao.py`.
+- `rf_por_periodo`: taxa livre de risco por período (número ou série alinhada), como em
+  `comparacao.py`. Opcional (padrão 0); em USD, o T-bill de 3 meses.
+- `periodos_por_ano`: 252 ações americanas e futuros, 365 cripto (negocia todo dia), ~260 forex.
 - `periodos_por_ano`: 252 diário, 365 cripto, 52 semanal, 12 mensal.
 
 Uso rápido:
     from backtest import retornos_estrategia, sensibilidade_custos, walk_forward_parametros
 
     sinal = (close.rolling(20).mean() > close.rolling(100).mean()).astype(float)
-    res = retornos_estrategia(sinal, close, abertura=open_, custo_por_lado=0.0005,
-                              rf_por_periodo=cdi)
+    res = retornos_estrategia(sinal, close, abertura=open_, custo_por_lado=0.0005)
     res["retorno"]            # retorno líquido por período (Series, se close for Series)
     res["trades"]["retorno"]  # retorno de cada trade sobre o capital
 
@@ -58,14 +60,6 @@ from estatistica import _vetor, cagr, max_drawdown, sharpe  # noqa: E402
 
 EXECUCOES = ("abertura_t1", "fechamento_t1", "fechamento_t")
 CAIXA = ("livre", "total", "nenhum")
-
-# Tarifas da B3 (negociação + liquidação) por lado, pessoa física, faixa de menor volume.
-# Valores de referência: confira a tabela vigente em b3.com.br antes de usar.
-TARIFAS_B3 = {
-    "acoes_swing": 0.00030,      # 0,005% negociação + 0,025% liquidação
-    "acoes_day_trade": 0.00023,  # 0,005% negociação + 0,018% liquidação
-}
-
 
 # ---------------------------------------------------------------------------
 # Utilidades
@@ -97,6 +91,20 @@ def _excesso(r: np.ndarray, rf_por_periodo, indice, periodos_por_ano: int) -> np
     return r - _rf(rf_por_periodo, len(r), indice, periodos_por_ano)
 
 
+def _taxa_periodo(valor, T: int, nome: str) -> np.ndarray:
+    if np.ndim(valor) == 0:
+        v = np.full(T, float(valor))
+    else:
+        v = np.asarray(valor, dtype=float).ravel()
+        if len(v) != T:
+            raise ValueError(f"{nome} tem {len(v)} valores para {T} períodos.")
+    if not np.all(np.isfinite(v)):
+        raise ValueError(f"{nome} tem NaN ou infinito.")
+    if np.abs(v).max(initial=0) > 0.01:
+        raise ValueError(f"{nome} passa de 1% por período: parece uma taxa anual. Divida por periodos_por_ano.")
+    return v
+
+
 def gerar_grade(parametros: dict) -> list[dict]:
     """Produto cartesiano: {"rapida": [10, 20], "lenta": [50, 100]} -> lista de 4 dicts."""
     nomes = list(parametros)
@@ -109,7 +117,8 @@ def gerar_grade(parametros: dict) -> list[dict]:
 
 def retornos_estrategia(sinal, close, abertura=None, execucao: str | None = None,
                         custo_por_lado: float = 0.0, rf_por_periodo=0.0, caixa: str = "livre",
-                        periodos_por_ano: int = 252, calcular_trades: bool = True) -> dict:
+                        periodos_por_ano: int = 252, calcular_trades: bool = True,
+                        financiamento_por_periodo=0.0, aluguel_por_periodo=0.0) -> dict:
     """Retorno líquido de uma estratégia pela convenção de timing de `dados-e-lookahead.md`.
 
     execucao:
@@ -119,18 +128,25 @@ def retornos_estrategia(sinal, close, abertura=None, execucao: str | None = None
     - "fechamento_t": executa no próprio fechamento do sinal. Só vale se o sinal puder ser
       calculado antes do leilão de fechamento; diga ao usuário que essa premissa foi usada.
     custo_por_lado: fração cobrada por unidade de giro (0.0005 = 5 bps), no período em que a
-      posição muda; inclui corretagem, tarifas, metade do spread e slippage (`custo_por_lado_b3`).
-    caixa: o que o capital rende além da posição, com `rf_por_periodo` (CDI):
-    - "livre" (padrão): a parte não usada, (1 − |posição|), rende CDI; acima de 100% de exposição
-      paga CDI. Ações compradas à vista.
-    - "total": o capital inteiro rende CDI, porque a posição não consome caixa (futuros, ou
-      long-short com margem aplicada). Nesse caso a posição é o nocional sobre o capital.
-    - "nenhum": caixa parado não rende nada (raramente realista no Brasil).
+      posição muda; inclui comissão, taxas, metade do spread e slippage (`custo_por_lado`).
+    financiamento_por_periodo: custo de carregar a posição, com sinal, por período (número ou
+      série): valor positivo, a posição comprada paga e a vendida recebe. Perpétuos de cripto:
+      soma das taxas de funding do período (3 por dia na maioria das corretoras). Forex: swap
+      (rollover) do par como fração do nocional, triplo na quarta-feira. Comprado alavancado
+      via margem: juros da margem acima de rf.
+    aluguel_por_periodo: taxa de aluguel por período cobrada só da posição vendida (ações
+      americanas: borrow fee anual / periodos_por_ano; papéis "hard to borrow" passam de 10% a.a.).
+    caixa: o que o capital rende além da posição, com `rf_por_periodo` (padrão 0, nada muda):
+    - "livre" (padrão): a parte não usada, (1 − |posição|), rende rf; acima de 100% de exposição
+      paga rf. Ações e cripto à vista.
+    - "total": o capital inteiro rende rf, porque a posição não consome caixa (futuros,
+      perpétuos, forex com margem). Nesse caso a posição é o nocional sobre o capital.
+    - "nenhum": caixa parado não rende nada (ex.: saldo parado na corretora de cripto).
 
-    Retorna `retorno` (líquido), `retorno_bruto` (só a posição), `custos`, `rf_caixa`,
+    Retorna `retorno` (líquido), `retorno_bruto` (só a posição), `custos`, `carregamento`, `rf_caixa`,
     `posicao` (em vigor no período, a que paga o custo), `giro`, `giro_anual`, `exposicao`
     (fração dos períodos posicionado) e `trades` (dict de arrays: `retorno` sobre o capital no
-    início do trade, líquido de custos e sem o CDI do caixa; `inicio`, `fim`, `lado`, `duracao`,
+    início do trade, líquido de custos e carregamento, sem o rendimento do caixa; `inicio`, `fim`, `lado`, `duracao`,
     `aberto`). Nas convenções de fechamento, `fim` é o período em que a saída paga custo; na
     abertura, o período cujo gap ainda pertence ao trade.
     """
@@ -171,6 +187,9 @@ def retornos_estrategia(sinal, close, abertura=None, execucao: str | None = None
 
     giro = np.abs(np.diff(posicao, prepend=0.0))
     custos = custo_por_lado * giro
+    fin = _taxa_periodo(financiamento_por_periodo, T, "financiamento_por_periodo")
+    alug = _taxa_periodo(aluguel_por_periodo, T, "aluguel_por_periodo")
+    carregamento = posicao * fin + np.maximum(-posicao, 0.0) * alug
     rf = _rf(rf_por_periodo, T, indice, periodos_por_ano)
     if caixa == "livre":
         rf_caixa = rf * (1 - np.abs(posicao))
@@ -178,12 +197,14 @@ def retornos_estrategia(sinal, close, abertura=None, execucao: str | None = None
         rf_caixa = rf.copy()
     else:
         rf_caixa = np.zeros(T)
-    liquido = bruto - custos + rf_caixa
+    liquido = bruto - custos - carregamento + rf_caixa
 
     res = {
         "retorno": _serie(liquido, indice),
         "retorno_bruto": _serie(bruto, indice),
         "custos": _serie(custos, indice),
+        "carregamento": _serie(carregamento, indice),
+        "carregamento_anual": float(carregamento.mean() * periodos_por_ano),
         "rf_caixa": _serie(rf_caixa, indice),
         "posicao": _serie(posicao, indice),
         "giro": _serie(giro, indice),
@@ -194,7 +215,7 @@ def retornos_estrategia(sinal, close, abertura=None, execucao: str | None = None
         "sinal": _serie(s, indice),
     }
     if calcular_trades:
-        res["trades"] = _trades(posicao, comp_gap, comp_pos, custo_por_lado)
+        res["trades"] = _trades(posicao, comp_gap, comp_pos - carregamento, custo_por_lado)
         res["n_trades"] = int(len(res["trades"]["retorno"]))
     return res
 
@@ -248,18 +269,19 @@ def _trades(P: np.ndarray, comp_gap: np.ndarray, comp_pos: np.ndarray, custo: fl
 def sensibilidade_custos(sinal, close, abertura=None, execucao: str | None = None,
                          custo_por_lado: float = 0.0005, multiplicadores=(0, 1, 2, 3),
                          rf_por_periodo=0.0, caixa: str = "livre",
-                         periodos_por_ano: int = 252) -> dict:
+                         periodos_por_ano: int = 252, **carregamento) -> dict:
     """Tabela de custos (x0 só como referência, x1 base, x2, x3) e custo de breakeven.
 
     `custo_breakeven` é o custo por lado em que o retorno médio em excesso de `rf_por_periodo`
-    vira zero (sem CDI, o retorno líquido zero). `margem` = breakeven / custo base; abaixo de 2,
-    a estratégia é frágil (`fragil=True`). Sharpe em excesso do CDI.
+    vira zero (com rf = 0, o retorno líquido zero). `margem` = breakeven / custo base; abaixo de 2,
+    a estratégia é frágil (`fragil=True`). Sharpe em excesso de rf. `carregamento`:
+    `financiamento_por_periodo` e `aluguel_por_periodo`, repassados a `retornos_estrategia`.
     """
     base = retornos_estrategia(sinal, close, abertura, execucao, 0.0, rf_por_periodo, caixa,
-                               periodos_por_ano, calcular_trades=False)
+                               periodos_por_ano, calcular_trades=False, **carregamento)
     indice = _indice(close)
     rf = _rf(rf_por_periodo, len(np.asarray(base["giro"])), indice, periodos_por_ano)
-    bruto = np.asarray(base["retorno"])          # sem custo, com o CDI do caixa
+    bruto = np.asarray(base["retorno"])          # sem custo de giro, com carregamento e caixa
     giro = np.asarray(base["giro"])
     cenarios = []
     for m in multiplicadores:
@@ -298,144 +320,29 @@ def formatar_sensibilidade(res: dict) -> str:
     return "\n".join(linhas)
 
 
-def custo_por_lado_b3(mercado: str = "acoes_swing", corretagem_por_ordem: float = 0.0,
-                      valor_medio_ordem: float | None = None, spread_bps: float = 0.0,
-                      slippage_bps: float = 0.0, tarifa: float | None = None) -> dict:
-    """Custo por lado (fração do valor negociado) para ações na B3.
+def custo_por_lado(comissao: float = 0.0, comissao_fixa: float = 0.0,
+                   valor_medio_ordem: float | None = None, spread_bps: float = 0.0,
+                   slippage_bps: float = 0.0, taxas: float = 0.0) -> dict:
+    """Custo por lado (fração do valor negociado) somando os componentes de `custos.md`.
 
-    Soma a tarifa da B3 (`TARIFAS_B3`, ou `tarifa` para sobrescrever), a corretagem fixa
-    dividida pelo valor médio da ordem, metade do spread e o slippage. Os valores de
-    `TARIFAS_B3` são de referência: confira a tabela vigente da B3 e da corretora. Futuros
-    (WIN, WDO) cobram por contrato: use `tarifa` = custo por contrato / valor nocional do
-    contrato (pontos × R$ por ponto: R$ 0,20 no WIN, R$ 10 no WDO).
+    comissao: fração do valor (taxa taker de cripto, ex.: 0.0005; comissão percentual).
+    comissao_fixa e valor_medio_ordem: comissão fixa por ordem (ou por contrato de futuros,
+      multiplicada pelo número de contratos) dividida pelo valor médio da ordem, na mesma moeda.
+    spread_bps: spread bid-ask inteiro; entra a metade por lado.
+    slippage_bps: deslizamento por lado, maior em ordens a mercado, stops e fora do horário líquido.
+    taxas: outras taxas por lado como fração (ex.: taxas de bolsa e regulatórias).
     """
-    if tarifa is None:
-        if mercado not in TARIFAS_B3:
-            raise ValueError(f"mercado deve ser um de {tuple(TARIFAS_B3)} ou passe `tarifa`.")
-        tarifa = TARIFAS_B3[mercado]
-    if corretagem_por_ordem and not valor_medio_ordem:
-        raise ValueError("Com corretagem fixa por ordem, informe valor_medio_ordem (R$).")
-    corretagem = corretagem_por_ordem / valor_medio_ordem if corretagem_por_ordem else 0.0
+    if comissao_fixa and not valor_medio_ordem:
+        raise ValueError("Com comissão fixa por ordem, informe valor_medio_ordem.")
     comp = {
-        "tarifa_b3": float(tarifa),
-        "corretagem": float(corretagem),
+        "comissao": float(comissao),
+        "comissao_fixa": float(comissao_fixa / valor_medio_ordem) if comissao_fixa else 0.0,
+        "taxas": float(taxas),
         "meio_spread": spread_bps / 2 / 1e4,
         "slippage": slippage_bps / 1e4,
     }
     comp["total"] = float(sum(comp.values()))
     return comp
-
-
-# ---------------------------------------------------------------------------
-# Imposto de renda (Brasil)
-# ---------------------------------------------------------------------------
-
-def imposto_renda_mensal(lucro_por_mes, aliquota: float = 0.15, vendas_por_mes=None,
-                         isencao_vendas: float | None = None, prejuizo_inicial: float = 0.0,
-                         darf_minimo: float = 10.0) -> dict:
-    """Imposto de renda mês a mês, com compensação de prejuízo, isenção e DARF mínimo (R$).
-
-    lucro_por_mes: resultado realizado (vendas fechadas) de cada mês, em R$, de UMA categoria
-      (swing trade e day trade se compensam só dentro da própria categoria: rode uma vez para
-      cada). Regras de referência: ações swing 15% com isenção para vendas de ações à vista até
-      R$ 20 mil no mês (`isencao_vendas=20000`, com `vendas_por_mes`); day trade 20% sem
-      isenção; ETFs e BDRs 15% sem isenção; FIIs 20% sem isenção. Confira a legislação vigente.
-    Em mês isento, o lucro não paga e não consome prejuízo acumulado; prejuízo sempre acumula.
-    Imposto abaixo de `darf_minimo` passa para o mês seguinte. O IRRF ("dedo-duro") é
-    antecipação do mesmo imposto e não muda o total; ignore-o no backtest.
-    """
-    lucros = np.asarray(lucro_por_mes, dtype=float).ravel()
-    vendas = None if vendas_por_mes is None else np.asarray(vendas_por_mes, dtype=float).ravel()
-    if vendas is not None and len(vendas) != len(lucros):
-        raise ValueError("vendas_por_mes e lucro_por_mes têm tamanhos diferentes.")
-    if isencao_vendas is not None and vendas is None:
-        raise ValueError("A isenção depende do total vendido no mês: passe vendas_por_mes.")
-    prejuizo, pendente = float(prejuizo_inicial), 0.0
-    imposto, acumulado, isento = [], [], []
-    for i, lucro in enumerate(lucros):
-        mes_isento = isencao_vendas is not None and vendas[i] <= isencao_vendas
-        devido = 0.0
-        if lucro < 0:
-            prejuizo += -lucro
-        elif lucro > 0 and not mes_isento:
-            usado = min(prejuizo, lucro)
-            prejuizo -= usado
-            devido = (lucro - usado) * aliquota
-        devido += pendente
-        if 0 < devido < darf_minimo:
-            pendente, devido = devido, 0.0
-        else:
-            pendente = 0.0
-        imposto.append(devido)
-        acumulado.append(prejuizo)
-        isento.append(bool(mes_isento))
-    return {"imposto": np.asarray(imposto), "prejuizo_acumulado": np.asarray(acumulado),
-            "isento": np.asarray(isento), "total": float(np.sum(imposto)),
-            "pendente": pendente}
-
-
-def simular_ir(resultado: dict, meses, capital_inicial: float = 100_000.0,
-               aliquota: float = 0.15, isencao_vendas: float | None = None,
-               darf_minimo: float = 10.0) -> dict:
-    """Aplica o imposto sobre os trades fechados de `retornos_estrategia` e devolve os retornos após IR.
-
-    meses: rótulo do mês de cada período (ex.: `close.index.to_period("M")`), mesmo tamanho.
-    O lucro de cada trade (retorno × capital no início dele) é realizado no mês do fim do
-    trade; o imposto do mês sai do capital no último período do mês (na prática, o DARF vence
-    no fim do mês seguinte: a aproximação é levemente conservadora). Trades ainda abertos no fim
-    não pagam. O CDI do caixa tributado na fonte não entra aqui. Com `isencao_vendas`, as
-    vendas do mês são estimadas pelo valor da posição comprada na saída (e na entrada das
-    vendidas): use só para ações à vista em swing trade.
-    """
-    r = _vetor(resultado["retorno"], "retorno", minimo=1)
-    m = np.asarray(meses).ravel()
-    if len(m) != len(r):
-        raise ValueError(f"meses ({len(m)}) e retornos ({len(r)}) têm tamanhos diferentes.")
-    tr = resultado.get("trades")
-    if tr is None:
-        raise ValueError("Rode retornos_estrategia com calcular_trades=True.")
-    P = np.abs(np.asarray(resultado["posicao"], dtype=float))
-    fecha = {}
-    for k in range(len(tr["retorno"])):
-        if not tr["aberto"][k]:
-            fecha.setdefault(int(tr["fim"][k]), []).append(k)
-    capital = float(capital_inicial)
-    cap_inicio = {}
-    lucro_mes = vendas_mes = 0.0
-    lucros, vendas, fim_mes = [], [], []
-    caps = np.empty(len(r))
-    for t in range(len(r)):
-        for k in np.flatnonzero(tr["inicio"] == t):
-            cap_inicio[int(k)] = capital
-        capital *= 1 + r[t]
-        for k in fecha.get(t, []):
-            ganho = tr["retorno"][k] * cap_inicio[k]
-            lucro_mes += ganho
-            tamanho = P[tr["inicio"][k]] * cap_inicio[k]
-            vendas_mes += tamanho + ganho if tr["lado"][k] > 0 else tamanho
-        if t == len(r) - 1 or m[t + 1] != m[t]:
-            lucros.append(lucro_mes)
-            vendas.append(vendas_mes)
-            fim_mes.append(t)
-            lucro_mes = vendas_mes = 0.0
-            ir = imposto_renda_mensal(lucros, aliquota, vendas if isencao_vendas else None,
-                                      isencao_vendas, darf_minimo=darf_minimo)
-            capital -= ir["imposto"][-1]
-        caps[t] = capital
-    anterior = np.r_[capital_inicial, caps[:-1]]
-    apos = caps / anterior - 1
-    total = float(ir["imposto"].sum())
-    lucro_bruto = float(np.sum(np.maximum(lucros, 0)))
-    return {
-        "retorno": _serie(apos, _indice(resultado["retorno"])),
-        "imposto_por_mes": ir["imposto"],
-        "lucro_por_mes": np.asarray(lucros),
-        "meses": m[fim_mes],
-        "imposto_total": total,
-        "prejuizo_a_compensar": float(ir["prejuizo_acumulado"][-1]),
-        "aliquota_efetiva_sobre_lucros": total / lucro_bruto if lucro_bruto > 0 else float("nan"),
-        "capital_final": float(caps[-1]),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +611,7 @@ def regime_volatilidade(retornos_ativo, janela: int = 63) -> np.ndarray:
 
 def teste_atraso(sinal, close, abertura=None, execucao: str | None = None,
                  custo_por_lado: float = 0.0, atraso_extra: int = 1, rf_por_periodo=0.0,
-                 caixa: str = "livre", periodos_por_ano: int = 252) -> dict:
+                 caixa: str = "livre", periodos_por_ano: int = 252, **carregamento) -> dict:
     """Sharpe com o sinal atrasado em mais `atraso_extra` períodos.
 
     Queda drástica (razão < 0,3 com Sharpe original > 1) sugere dependência de informação do
@@ -714,7 +621,7 @@ def teste_atraso(sinal, close, abertura=None, execucao: str | None = None,
     s = _sinal(sinal)
     kw = dict(abertura=abertura, execucao=execucao, custo_por_lado=custo_por_lado,
               rf_por_periodo=rf_por_periodo, caixa=caixa, periodos_por_ano=periodos_por_ano,
-              calcular_trades=False)
+              calcular_trades=False, **carregamento)
     rf = _rf(rf_por_periodo, len(s), _indice(close), periodos_por_ano)
     a = np.asarray(retornos_estrategia(s, close, **kw)["retorno"]) - rf
     b = np.asarray(retornos_estrategia(_atrasar(s, atraso_extra), close, **kw)["retorno"]) - rf
@@ -786,7 +693,7 @@ def posicao_vol_alvo(sinal, retornos_ativo, vol_alvo: float = 0.10, janela: int 
 
 def kelly_estrategia(retornos, rf_por_periodo=0.0, fracao: float = 0.25,
                      periodos_por_ano: int = 252) -> dict:
-    """Kelly de uma estratégia: alavancagem f* = média / variância do retorno em excesso do CDI.
+    """Kelly de uma estratégia: alavancagem f* = média / variância do retorno em excesso de rf.
 
     Devolve o Kelly completo, o IC 95% aproximado (o erro da média domina) e a alavancagem
     sugerida = `fracao` × Kelly (padrão 1/4). Use como teto, nunca o Kelly completo: se a média
@@ -808,10 +715,9 @@ def kelly_estrategia(retornos, rf_por_periodo=0.0, fracao: float = 0.25,
 
 if __name__ == "__main__":
     rng = np.random.default_rng(1)
-    T = 252 * 6
-    close = 100 * np.cumprod(1 + rng.normal(0.0004, 0.015, T))
-    abertura = close * (1 + rng.normal(0, 0.004, T))
-    cdi = (1 + 0.11) ** (1 / 252) - 1
+    T = 365 * 4                                      # cripto: negocia todos os dias
+    close = 30_000 * np.cumprod(1 + rng.normal(0.0008, 0.03, T))
+    abertura = np.r_[30_000, close[:-1]]             # sem gap: abre no fechamento anterior
 
     def media_movel(x, n):
         out = np.full(len(x), np.nan)
@@ -819,14 +725,17 @@ if __name__ == "__main__":
         out[n - 1:] = (acum[n:] - acum[:-n]) / n
         return out
 
-    sinal = (media_movel(close, 20) > media_movel(close, 100)).astype(float)
-    res = retornos_estrategia(sinal, close, abertura, custo_por_lado=0.0005, rf_por_periodo=cdi)
-    print("Execução:", res["execucao"], "| trades:", res["n_trades"],
-          "| giro anual:", round(res["giro_anual"], 1), "| exposição:", round(res["exposicao"], 2))
-    print(formatar_sensibilidade(sensibilidade_custos(sinal, close, abertura, custo_por_lado=0.0005,
-                                                      rf_por_periodo=cdi)))
-    print("Teste do atraso:", teste_atraso(sinal, close, abertura, rf_por_periodo=cdi))
-    print("Custo B3 (swing, spread 10 bps, slippage 5 bps):",
-          custo_por_lado_b3(spread_bps=10, slippage_bps=5))
-    print("IR mensal (lucros 1000, -3000, 5000):",
-          imposto_renda_mensal([1000, -3000, 5000])["imposto"])
+    sinal = np.where(media_movel(close, 20) > media_movel(close, 100), 1.0, -1.0)
+    custo = custo_por_lado(comissao=0.0005, spread_bps=2, slippage_bps=3)["total"]
+    funding = 3 * 0.0001                             # perpétuo: 0,01% a cada 8 h
+    kw = dict(custo_por_lado=custo, caixa="total", periodos_por_ano=365,
+              financiamento_por_periodo=funding)
+    res = retornos_estrategia(sinal, close, abertura, **kw)
+    print("Perpétuo de cripto, long-short | trades:", res["n_trades"], "| giro anual:",
+          round(res["giro_anual"], 1), "| funding anual:", round(res["carregamento_anual"], 4))
+    print(formatar_sensibilidade(sensibilidade_custos(sinal, close, abertura, custo_por_lado=custo,
+                                                      caixa="total", periodos_por_ano=365,
+                                                      financiamento_por_periodo=funding)))
+    print("Teste do atraso:", teste_atraso(sinal, close, abertura, **kw))
+    print("Custo por lado (taker 5 bps, spread 2 bps, slippage 3 bps):",
+          custo_por_lado(comissao=0.0005, spread_bps=2, slippage_bps=3))

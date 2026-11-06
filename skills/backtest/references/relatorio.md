@@ -17,7 +17,7 @@ Use esta estrutura ao entregar o resultado. Seja direto e não esconda testes re
 
 ## 2. Dados
 - Fonte, período, frequência, universo:
-- Viés de sobrevivência tratado? Ajustes de proventos/splits:
+- Viés de sobrevivência tratado? Ajustes de dividendos/splits, rolagem de futuros, hora do fechamento diário:
 - Problemas encontrados e correções:
 
 ## 3. Auditoria de look-ahead
@@ -25,9 +25,9 @@ Use esta estrutura ao entregar o resultado. Seja direto e não esconda testes re
 - Testes feitos (atraso extra, futuro truncado, sinal aleatório) e resultado:
 
 ## 4. Custos
-- Premissas por lado (corretagem, spread, slippage, impacto, financiamento, impostos):
+- Premissas por lado (comissão, spread, slippage, impacto) e carregamento (funding, swap, aluguel, rolagem):
 - Tabela de sensibilidade (x1, x2, x3) e custo de breakeven:
-- Caixa rendendo CDI? Imposto de renda considerado (categoria, alíquota, retorno após IR):
+- Caixa rendendo juros (qual taxa)? Impostos considerados (jurisdição, alíquota)?
 
 ## 5–6. Divisão e walk-forward
 - Treino / validação / holdout (datas):
@@ -58,7 +58,7 @@ Se houve comparação entre estratégias (ver `comparacao.md`):
 | Melhor de N x benchmark | | p_spa = | SPA |
 | MCS (90%) | {estratégias que ficam} | | T_max |
 
-- Taxa livre de risco usada no Sharpe (ex.: CDI diário):
+- Taxa livre de risco usada no Sharpe (ex.: T-bill de 3 meses, ou 0 em cripto):
 - Correlação entre as estratégias:
 - Critério de desempate, se os testes não distinguem:
 

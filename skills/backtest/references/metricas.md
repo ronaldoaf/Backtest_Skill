@@ -25,7 +25,7 @@ Reporte sempre **líquido de custos**, sobre o período fora da amostra (walk-fo
 | Número de trades | Total e por ano |
 | Taxa de acerto | trades vencedores / total |
 | Payoff | ganho médio / perda média |
-| Expectativa por trade | `acerto · ganho_médio − (1 − acerto) · perda_média` (em R$ e em múltiplos do risco) |
+| Expectativa por trade | `acerto · ganho_médio − (1 − acerto) · perda_média` (na moeda da conta e em múltiplos do risco) |
 | Profit factor | soma dos ganhos / soma das perdas |
 | Duração média | Tempo médio em posição, separado para ganhos e perdas |
 | Maior sequência de perdas | Comparar com a esperada pelo Monte Carlo |

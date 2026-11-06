@@ -7,7 +7,7 @@ Convenções:
 - `posicoes[t]`: posição em vigor durante `retornos_ativo[t]`, montada pela convenção de timing
   de `references/dados-e-lookahead.md`. Com sinal no fechamento de t e execução no fechamento
   de t+1: `posicoes = sinal.shift(2).fillna(0)` e `retornos_ativo = close.pct_change().fillna(0)`.
-- `periodos_por_ano`: 252 para pregões diários, 365 para cripto, 52 semanal, 12 mensal.
+- `periodos_por_ano`: 252 diário (ações, futuros), 365 cripto, ~260 forex, 52 semanal, 12 mensal.
 - Entradas com NaN ou infinito levantam ValueError. Remova as linhas iniciais criadas por
   `shift`/`pct_change` (ou preencha posições com 0) antes de chamar.
 
@@ -137,7 +137,7 @@ def _rf_vetor(rf_por_periodo, n: int) -> np.ndarray:
 
 
 def resumo_metricas(retornos, periodos_por_ano: int = 252, rf_por_periodo=0.0) -> dict:
-    """Métricas da série. Sharpe e Sortino em excesso de `rf_por_periodo` (CDI por período)."""
+    """Métricas da série. Sharpe e Sortino em excesso de `rf_por_periodo` (taxa livre de risco por período)."""
     r = _vetor(retornos)
     x = r - _rf_vetor(rf_por_periodo, len(r))
     mdd = max_drawdown(r)
@@ -207,7 +207,7 @@ def bootstrap_metricas(retornos, periodos_por_ano: int = 252, n_sim: int = 5000,
 
     Vale para a série fora da amostra ou para uma estratégia definida antes de ver os dados.
     Na melhor de N configurações, o IC fica otimista: use DSR, PBO ou teste_permutacao_selecao.
-    O Sharpe é em excesso de `rf_por_periodo` (CDI), reamostrado nas mesmas datas dos retornos.
+    O Sharpe é em excesso de `rf_por_periodo` (taxa livre de risco), reamostrado nas mesmas datas dos retornos.
     """
     r = _vetor(retornos)
     x = r - _rf_vetor(rf_por_periodo, len(r))
@@ -233,7 +233,7 @@ def monte_carlo_drawdown(resultados_trades, n_sim: int = 10000, seed: int = 42,
                          percentis=(50, 90, 95, 99)) -> dict:
     """Reamostra os trades com reposição e mede drawdown máximo e maior sequência de perdas.
 
-    `resultados_trades` é o retorno de cada trade sobre o capital total (fração, não P&L em R$),
+    `resultados_trades` é o retorno de cada trade sobre o capital total (fração, não P&L em dinheiro),
     com trades sem sobreposição no tempo. Com trades simultâneos, use bootstrap em blocos dos
     retornos diários. Use os percentis altos como limites de desligamento (passo 12).
     """
