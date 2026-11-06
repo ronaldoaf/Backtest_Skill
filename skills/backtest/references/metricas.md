@@ -17,6 +17,9 @@ Reporte sempre **líquido de custos**, sobre o período fora da amostra (walk-fo
 | Assimetria e curtose | Momentos dos retornos | Estratégias de venda de volatilidade parecem ótimas até a cauda |
 
 ## Trades
+
+`retornos_estrategia` devolve os trades em `res["trades"]` (retorno de cada um sobre o capital, início, fim, lado e duração). Passe `res["trades"]["retorno"]` (sem os trades ainda abertos) para `metricas_trades` e `monte_carlo_drawdown`.
+
 | Métrica | Definição |
 |---|---|
 | Número de trades | Total e por ano |

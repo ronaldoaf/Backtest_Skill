@@ -27,6 +27,7 @@ Use esta estrutura ao entregar o resultado. Seja direto e não esconda testes re
 ## 4. Custos
 - Premissas por lado (corretagem, spread, slippage, impacto, financiamento, impostos):
 - Tabela de sensibilidade (x1, x2, x3) e custo de breakeven:
+- Caixa rendendo CDI? Imposto de renda considerado (categoria, alíquota, retorno após IR):
 
 ## 5–6. Divisão e walk-forward
 - Treino / validação / holdout (datas):

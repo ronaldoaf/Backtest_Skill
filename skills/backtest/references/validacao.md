@@ -35,12 +35,16 @@ Decisões a documentar:
 - Tamanho do treino (ex.: 3 a 5 anos para diário) e do teste (ex.: 6 a 12 meses). O teste deve ter trades suficientes.
 - Critério de otimização (preferir Sharpe ou retorno/drawdown a retorno bruto) e o espaço de busca.
 
+Em `scripts/backtest.py`, `walk_forward_parametros(funcao, grade, janela_treino, janela_teste, ancorada=...)` recebe uma função que devolve os retornos de uma configuração (por exemplo, chamando `retornos_estrategia`) e a grade de parâmetros. Devolve a série fora da amostra concatenada, os parâmetros de cada janela, a eficiência, os `parametros_atuais` para operar e a matriz de todas as configurações, que alimenta `pbo_cscv`, `deflated_sharpe_ratio` e `teste_permutacao_selecao` no passo 8. Cada configuração da grade é uma tentativa (regra de ouro 4).
+
 Métricas do walk-forward:
 - **Eficiência walk-forward (WFE)** = desempenho anualizado fora da amostra / desempenho anualizado dentro da amostra. Abaixo de ~0,5 indica overfitting.
 - **Estabilidade dos parâmetros** entre janelas: se pulam de um extremo a outro, a otimização está ajustando ruído.
 - Percentual de janelas de teste lucrativas.
 
 ## Passo 7: robustez de parâmetros
+
+`robustez_parametros(funcao, grade, escolhido)` calcula a grade e os indicadores abaixo, e `mapa_calor` monta a tabela de dois parâmetros.
 
 1. Monte uma grade em torno dos parâmetros escolhidos (±20 a 50% em cada um).
 2. Gere mapa de calor da métrica (Sharpe) para pares de parâmetros.
@@ -58,7 +62,7 @@ Outros testes de robustez:
 
 ## Passo 9: regimes e mercados
 
-Quebre o resultado oficial (fora da amostra) por:
+Quebre o resultado oficial (fora da amostra) por (`quebrar_por` com rótulos de `regime_tendencia` ou `regime_volatilidade`, e `por_ano`; `formatar_quebra` monta a tabela):
 - **Tendência:** mercado em alta, baixa e lateral (ex.: benchmark acima/abaixo da média de 200 dias e inclinação).
 - **Volatilidade:** tercis da volatilidade realizada ou do índice de volatilidade.
 - **Eventos de estresse:** 2008, 2020, crises locais, choques de juros.

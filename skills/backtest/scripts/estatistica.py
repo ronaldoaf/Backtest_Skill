@@ -126,16 +126,28 @@ def maior_sequencia_perdas(resultados) -> int:
     return maior
 
 
-def resumo_metricas(retornos, periodos_por_ano: int = 252) -> dict:
+def _rf_vetor(rf_por_periodo, n: int) -> np.ndarray:
+    """rf por período (número ou array de tamanho n), sem NaN."""
+    rf = np.broadcast_to(np.asarray(rf_por_periodo, dtype=float), (n,)) if np.ndim(rf_por_periodo) == 0 \
+        else _vetor(rf_por_periodo, "rf_por_periodo", minimo=1)
+    if len(rf) != n:
+        raise ValueError(f"rf_por_periodo tem {len(rf)} valores e os retornos têm {n}. Alinhe pelas mesmas datas.")
+    _checar_finitos(np.asarray(rf), "rf_por_periodo")
+    return np.asarray(rf, dtype=float)
+
+
+def resumo_metricas(retornos, periodos_por_ano: int = 252, rf_por_periodo=0.0) -> dict:
+    """Métricas da série. Sharpe e Sortino em excesso de `rf_por_periodo` (CDI por período)."""
     r = _vetor(retornos)
+    x = r - _rf_vetor(rf_por_periodo, len(r))
     mdd = max_drawdown(r)
     c = cagr(r, periodos_por_ano)
     return {
         "n_periodos": int(len(r)),
         "cagr": c,
         "volatilidade": float(r.std(ddof=1) * math.sqrt(periodos_por_ano)),
-        "sharpe": sharpe(r, periodos_por_ano),
-        "sortino": sortino(r, periodos_por_ano),
+        "sharpe": sharpe(x, periodos_por_ano),
+        "sortino": sortino(x, periodos_por_ano),
         "max_drawdown": mdd,
         "calmar": float(c / abs(mdd)) if mdd < 0 else float("nan"),
         "duracao_max_dd_periodos": duracao_max_drawdown(r),
@@ -189,18 +201,22 @@ def _indices_bloco(n: int, tamanho_bloco: int, rng: np.random.Generator) -> np.n
 
 
 def bootstrap_metricas(retornos, periodos_por_ano: int = 252, n_sim: int = 5000,
-                       tamanho_bloco: int = 10, nivel: float = 0.95, seed: int = 42) -> dict:
+                       tamanho_bloco: int = 10, nivel: float = 0.95, seed: int = 42,
+                       rf_por_periodo=0.0) -> dict:
     """IC do Sharpe, CAGR e drawdown máximo via bootstrap em blocos.
 
     Vale para a série fora da amostra ou para uma estratégia definida antes de ver os dados.
     Na melhor de N configurações, o IC fica otimista: use DSR, PBO ou teste_permutacao_selecao.
+    O Sharpe é em excesso de `rf_por_periodo` (CDI), reamostrado nas mesmas datas dos retornos.
     """
     r = _vetor(retornos)
+    x = r - _rf_vetor(rf_por_periodo, len(r))
     rng = np.random.default_rng(seed)
     sh, cg, dd = np.empty(n_sim), np.empty(n_sim), np.empty(n_sim)
     for i in range(n_sim):
-        amostra = r[_indices_bloco(len(r), tamanho_bloco, rng)]
-        sh[i] = sharpe(amostra, periodos_por_ano)
+        idx = _indices_bloco(len(r), tamanho_bloco, rng)
+        amostra = r[idx]
+        sh[i] = sharpe(x[idx], periodos_por_ano)
         cg[i] = cagr(amostra, periodos_por_ano)
         dd[i] = max_drawdown(amostra)
     a = (1 - nivel) / 2

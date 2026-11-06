@@ -38,6 +38,8 @@ O sinal de *t* é calculado com dados até o fechamento de *t*, inclusive. A tab
 | Abertura de *t+1* | Fórmula abaixo | Padrão quando há preço de abertura |
 | Fechamento de *t* | `sinal.shift(1).fillna(0) * close.pct_change()` | **Só** se o sinal puder ser calculado antes do leilão de fechamento (ex.: com o preço de minutos antes) e a ordem for executável no leilão. Diga ao usuário que essa premissa foi usada |
 
+`retornos_estrategia` em `scripts/backtest.py` implementa as três linhas (`execucao="abertura_t1"`, `"fechamento_t1"` ou `"fechamento_t"`), com custos e caixa no CDI, e foi conferida contra uma simulação evento a evento. Use-a em vez de reescrever as fórmulas; elas ficam abaixo para auditoria.
+
 Execução na abertura de *t+1*: a posição nova vale do pregão seguinte em diante, e a antiga ainda carrega o gap overnight.
 
 ```python
@@ -72,7 +74,7 @@ retorno_liquido = retorno_estrategia - custo_por_lado * giro
 | Reotimização usando o período de teste | Parâmetros escolhidos com o histórico completo | Walk-forward |
 
 ### Testes práticos para pegar vazamento
-1. **Teste do atraso:** atrase todos os sinais em mais 1 barra. Uma queda drástica de desempenho (ex.: Sharpe de 3 para 0,3) sugere que a estratégia depende de informação do mesmo instante.
-2. **Teste do futuro truncado:** calcule os sinais com dados até a data *T* e depois com dados até *T+N*. Os sinais até *T* devem ser idênticos.
+1. **Teste do atraso** (`teste_atraso`): atrase todos os sinais em mais 1 barra. Uma queda drástica de desempenho (ex.: Sharpe de 3 para 0,3) sugere que a estratégia depende de informação do mesmo instante.
+2. **Teste do futuro truncado** (`teste_futuro_truncado`): calcule os sinais com dados até a data *T* e depois com dados até *T+N*. Os sinais até *T* devem ser idênticos. Pega média centrada, `bfill`, normalização global e dados revisados.
 3. **Teste do sinal aleatório:** troque o sinal por ruído com a mesma frequência. O resultado deve ficar próximo de zero menos custos; se ficar positivo, há vazamento no motor.
 4. **Leitura linha a linha:** para 3 a 5 trades, imprima os dados disponíveis no momento da decisão e confira manualmente.

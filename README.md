@@ -1,18 +1,50 @@
 # Backtest_Skill
 
-Skill para o Claude executar backtests de estratégias de trading e investimento da melhor forma possível.
+Skill para o Claude executar backtests de estratégias de trading e investimento da melhor forma possível: o objetivo é descobrir se uma estratégia tem vantagem real, não produzir a curva de capital mais bonita.
 
-## Conteúdo
+## O que a skill cobre
 
-- [`skills/backtest/`](skills/backtest/SKILL.md): roteiro de 12 passos (hipótese, dados limpos, sem look-ahead, custos, divisão de dados, walk-forward, robustez, testes estatísticos, regimes, métricas, paper trading e monitoramento), com referências detalhadas, um script Python de estatística (bootstrap, permutação, Deflated Sharpe Ratio, PBO, Monte Carlo) e um módulo de comparação de estratégias (diferença de Sharpe por Ledoit-Wolf e bootstrap pareado estudentizado, pares com Holm, Hansen SPA/White Reality Check, Model Confidence Set) e um módulo de portfólio de estratégias (1/N, vol inversa, risk parity, HRP, mínima variância, max Sharpe e Kelly fracionado, com walk-forward dos pesos, custos de rebalanceamento, limites, análise de diversificação e alertas de overfitting).
+- **Roteiro de 12 passos** ([`SKILL.md`](skills/backtest/SKILL.md)): hipótese, dados limpos, sem look-ahead, custos, divisão de dados, walk-forward, robustez, testes estatísticos, regimes, métricas, paper trading e monitoramento, com regras de ouro e um veredito obrigatório (*Rejeitada*, *Inconclusiva*, *Promissora* ou *Aprovada com tamanho reduzido*).
+- **Referências** ([`references/`](skills/backtest/references)): checklists de cada passo, custos e imposto de renda no Brasil, testes estatísticos, comparação de estratégias, portfólio e o modelo do relatório final.
+- **Scripts** ([`scripts/`](skills/backtest/scripts), só `numpy`):
+  - `backtest.py`: motor vetorizado com a convenção de timing (abertura ou fechamento de *t+1*), custos por giro, caixa no CDI e extração de trades; sensibilidade e breakeven de custos; custos da B3 e imposto de renda; walk-forward de parâmetros; robustez e mapa de calor; regimes e ano a ano; testes de look-ahead; alvo de volatilidade e Kelly.
+  - `estatistica.py`: métricas, bootstrap, permutação simples e com correção de seleção, Deflated Sharpe Ratio, PBO e Monte Carlo de drawdown.
+  - `comparacao.py`: diferença de Sharpe (Ledoit-Wolf e bootstrap estudentizado), pares com Holm, Hansen SPA/White Reality Check e Model Confidence Set.
+  - `portfolio.py`: 1/N, vol inversa, risk parity, HRP, mínima variância, max Sharpe e Kelly fracionado, com walk-forward dos pesos, custos de rebalanceamento, limites, diversificação e alertas de overfitting.
+  - `exemplo_completo.py`: os 12 passos de ponta a ponta numa estratégia de médias móveis, com rascunho do relatório.
 
 ## Instalação
 
 - **Claude Code:** copie `skills/backtest/` para `~/.claude/skills/backtest/` (pessoal) ou `.claude/skills/backtest/` (no projeto).
-- **Claude.ai:** compacte a pasta `skills/backtest/` em um .zip e envie em *Configurações > Capacidades > Skills*.
+- **Claude.ai:** gere o pacote com `python ferramentas/validar_skill.py --zip` e envie `dist/backtest.zip` em *Configurações > Capacidades > Skills*. O mesmo pacote fica disponível como artefato em cada execução do CI.
 
-Os scripts `scripts/estatistica.py`, `scripts/comparacao.py` e `scripts/portfolio.py` dependem apenas de `numpy`. Rode qualquer um deles (ex.: `python skills/backtest/scripts/portfolio.py`) para ver uma demonstração.
+## Como usar
 
-## Testes
+Peça ao Claude algo como "faça o backtest desta estratégia", "compare estas duas estratégias" ou "quanto capital dar a cada uma destas estratégias". A skill é carregada pela descrição e conduz os passos; o resultado sai no formato de `references/relatorio.md`.
 
-`python -m pytest tests` (ou `python tests/test_estatistica.py`, `python tests/test_comparacao.py` e `python tests/test_portfolio.py`, sem pytest) roda os testes de regressão dos scripts, verifica a calibração dos testes de comparação sob a hipótese nula e confere a fórmula de execução na abertura de *t+1* contra uma simulação evento a evento (essa parte usa `pandas`, se estiver instalado).
+Para ver o fluxo inteiro rodando:
+
+```bash
+pip install numpy pandas
+cd skills/backtest/scripts
+python exemplo_completo.py              # dados sintéticos
+python exemplo_completo.py precos.csv   # colunas data, abertura, fechamento e, opcional, cdi (% ao dia, série 12 do BCB)
+```
+
+Cada script também roda sozinho (`python backtest.py`, `python estatistica.py`, ...) com uma demonstração.
+
+## Testes e validação
+
+```bash
+pip install numpy pandas pytest
+python ferramentas/validar_skill.py   # cabeçalho, arquivos citados e nomes de funções da documentação
+python -m pytest tests                # ou python tests/test_<módulo>.py, sem pytest
+```
+
+Os testes conferem as fórmulas de execução contra uma simulação evento a evento, a calibração dos testes estatísticos sob a hipótese nula, as regras de imposto, o walk-forward sem olhar o futuro e o exemplo de ponta a ponta. O workflow em `.github/workflows/testes.yml` roda tudo isso a cada push e pull request.
+
+## Limitações
+
+- O motor é vetorizado e diário: ordens limitadas, stops intradiários, filas e execução parcial pedem um motor orientado a eventos (a skill orienta a usar um nesses casos).
+- Valores de tarifas e regras de imposto são de referência: confira os vigentes.
+- Não há fonte de dados embutida: os preços (ajustados por proventos, sem viés de sobrevivência) e o CDI vêm do usuário.
