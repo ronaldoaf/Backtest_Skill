@@ -1,6 +1,6 @@
 ---
 name: backtest
-description: Guia para planejar, executar e validar backtests de estratégias de trading/investimento sem se enganar. Use sempre que o usuário pedir para testar, otimizar ou avaliar uma estratégia com dados históricos, comparar duas ou mais estratégias, revisar um backtest existente, ou decidir se uma estratégia tem vantagem real (edge) antes de operar.
+description: Guia para planejar, executar e validar backtests de estratégias de trading/investimento sem se enganar. Use sempre que o usuário pedir para testar, otimizar ou avaliar uma estratégia com dados históricos, comparar duas ou mais estratégias, montar ou otimizar um portfólio de estratégias operando em conjunto (pesos, risk parity, HRP, Kelly, rebalanceamento), revisar um backtest existente, ou decidir se uma estratégia tem vantagem real (edge) antes de operar.
 ---
 
 # Backtest robusto
@@ -52,6 +52,12 @@ Siga os passos em ordem. Para cada um há detalhes e checklists em `references/`
 - escolher entre muitas: `model_confidence_set`. Se o conjunto final tiver várias estratégias, diga que os dados não as distinguem e desempate por simplicidade, custo ou capacidade (ou combine-as).
 SPA e MCS comparam Sharpe por padrão (`criterio="sharpe"`), para que alavancagem não pareça vantagem.
 
+**Portfólio de estratégias.** Quando o usuário for operar várias estratégias juntas e perguntar quanto capital dar a cada uma, siga `references/portfolio.md` e use `scripts/portfolio.py`. Otimizar pesos é otimizar parâmetros: a referência é 1/N, que não estima nada e é difícil de bater fora da amostra.
+- Entrada: retornos **fora da amostra** de cada estratégia (walk-forward concatenado), alinhados, com o CDI em `rf_por_periodo` (o caixa rende CDI; Sharpe e Kelly em excesso dele).
+- Primeiro `analise_diversificacao`: pares redundantes, perdas conjuntas nos piores dias além do que a correlação explica, contribuição de risco e número efetivo de apostas.
+- Depois `comparar_metodos` (walk-forward com custo de rebalanceamento, limites de peso, teste contra 1/N com Holm, MCS e alertas). Prefira métodos que só usam a covariância (`risk_parity`, `hrp`, `vol_inversa`); `max_sharpe` e `kelly` dependem de médias e só valem se baterem 1/N com folga. Kelly sempre fracionado.
+- Fique com 1/N ou o método mais simples dentro do MCS, salvo vitória significativa. Cada método e parâmetro testado conta como tentativa (regra de ouro 4), e o portfólio escolhido passa pelos passos 8 a 12 como uma estratégia.
+
 **9. Diferentes regimes e mercados.** Ver `references/validacao.md`. Quebre o resultado por regime (alta, baixa, lateral; alta e baixa volatilidade; crises) e por ano. Teste em ativos ou mercados parecidos sem reotimizar. Uma vantagem que só existe num ano ou num ativo não é vantagem.
 
 **10. Métricas além do retorno.** Ver `references/metricas.md`. CAGR, volatilidade, Sharpe, Sortino, Calmar, drawdown máximo e sua duração, número de trades, taxa de acerto, payoff, expectativa por trade, exposição, turnover, capacidade. Sinalize amostras pequenas (menos de ~100 trades ou menos de ~3 anos de dados diários são pouco conclusivos).
@@ -79,8 +85,10 @@ SPA e MCS comparam Sharpe por padrão (`criterio="sharpe"`), para que alavancage
 | `references/validacao.md` | Passos 5, 6, 7 e 9: divisão, walk-forward, robustez e regimes |
 | `references/estatistica.md` | Passo 8: testes, DSR, PBO, Monte Carlo |
 | `references/comparacao.md` | Passo 8: comparar duas ou mais estratégias (diferença de Sharpe, SPA, MCS) |
+| `references/portfolio.md` | Passo 8: portfólio de estratégias (alocação, walk-forward dos pesos, diversificação) |
 | `references/metricas.md` | Passo 10: definições e limites das métricas |
 | `references/incubacao-e-monitoramento.md` | Passos 11 e 12 |
 | `references/relatorio.md` | Modelo do relatório final |
 | `scripts/estatistica.py` | Funções prontas: métricas, bootstrap, permutação simples e com correção de seleção, DSR, PBO |
 | `scripts/comparacao.py` | Comparação de estratégias: tabela lado a lado, diferença de Sharpe (HAC e bootstrap), pares com Holm, SPA/Reality Check, Model Confidence Set |
+| `scripts/portfolio.py` | Portfólio de estratégias: 1/N, vol inversa, risk parity, HRP, mínima variância, max Sharpe e Kelly fracionado com covariância de Ledoit-Wolf; walk-forward com custos e faixa de rebalanceamento; diversificação; comparação com 1/N e alertas de overfitting |
