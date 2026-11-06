@@ -4,7 +4,7 @@ Skill para o Claude executar backtests de estratégias de trading e investimento
 
 ## Conteúdo
 
-- [`skills/backtest/`](skills/backtest/SKILL.md): roteiro de 12 passos (hipótese, dados limpos, sem look-ahead, custos, divisão de dados, walk-forward, robustez, testes estatísticos, regimes, métricas, paper trading e monitoramento), com referências detalhadas, um script Python de estatística (bootstrap, permutação, Deflated Sharpe Ratio, PBO, Monte Carlo) e um módulo de comparação de estratégias (diferença de Sharpe por Ledoit-Wolf e bootstrap pareado, pares com Holm, Hansen SPA/White Reality Check, Model Confidence Set).
+- [`skills/backtest/`](skills/backtest/SKILL.md): roteiro de 12 passos (hipótese, dados limpos, sem look-ahead, custos, divisão de dados, walk-forward, robustez, testes estatísticos, regimes, métricas, paper trading e monitoramento), com referências detalhadas, um script Python de estatística (bootstrap, permutação, Deflated Sharpe Ratio, PBO, Monte Carlo) e um módulo de comparação de estratégias (diferença de Sharpe por Ledoit-Wolf e bootstrap pareado estudentizado, pares com Holm, Hansen SPA/White Reality Check, Model Confidence Set).
 
 ## Instalação
 
