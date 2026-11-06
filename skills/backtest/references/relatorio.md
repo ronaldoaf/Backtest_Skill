@@ -61,6 +61,17 @@ Se houve comparação entre estratégias (ver `comparacao.md`):
 - Correlação entre as estratégias:
 - Critério de desempate, se os testes não distinguem:
 
+Se houver portfólio de estratégias (ver `portfolio.md`):
+
+| Método | Sharpe fora | Eficiência | Max DD | Giro anual | Diferença x 1/N (IC) | p Holm |
+|---|---|---|---|---|---|---|
+| 1/N | | | | | — | — |
+| <escolhido> | | | | | | |
+
+- Correlação média, pares redundantes, perdas conjuntas (observado x normal), apostas efetivas:
+- Walk-forward dos pesos (janela, rebalanceamento, faixa, custo_giro, limites, vol_alvo) e métodos testados:
+- MCS (90%), método escolhido, pesos atuais e critério de desempate:
+
 ## 9. Regimes e mercados
 - Tabela por regime e por ano:
 - Outros ativos/mercados sem reotimizar:
