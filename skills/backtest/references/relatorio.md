@@ -21,7 +21,7 @@ Use esta estrutura ao entregar o resultado. Seja direto e não esconda testes re
 - Problemas encontrados e correções:
 
 ## 3. Auditoria de look-ahead
-- Atraso de execução usado:
+- Execução assumida (linha da convenção de timing: fechamento de t+1, abertura de t+1 ou fechamento de t com a ressalva):
 - Testes feitos (atraso extra, futuro truncado, sinal aleatório) e resultado:
 
 ## 4. Custos
@@ -42,9 +42,9 @@ Use esta estrutura ao entregar o resultado. Seja direto e não esconda testes re
 | Teste | Resultado | Status |
 |---|---|---|
 | vs. benchmark (alfa, beta) | | |
-| Percentil vs. aleatórias | | |
-| IC 95% Sharpe (bootstrap) | | |
-| p-valor permutação | | |
+| IC 95% Sharpe (bootstrap, fora da amostra) | | |
+| p-valor permutação circular (fora da amostra) | | |
+| p-valor permutação com seleção (melhor de N) | | |
 | Nº de tentativas registradas | | |
 | Deflated Sharpe Ratio | | |
 | PBO | | |
