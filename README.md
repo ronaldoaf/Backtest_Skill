@@ -13,6 +13,14 @@ Skill para o Claude executar backtests de estratégias de trading e investimento
   - `portfolio.py`: 1/N, vol inversa, risk parity, HRP, mínima variância, max Sharpe e Kelly fracionado, com walk-forward dos pesos, custos de rebalanceamento, limites, diversificação e alertas de overfitting.
   - `exemplo_completo.py`: os 12 passos de ponta a ponta numa estratégia de médias móveis, com rascunho do relatório.
 
+
+## Skill `backtest-lighter`
+
+[`skills/backtest-lighter`](skills/backtest-lighter/SKILL.md) é o protocolo do projeto Backtests Lighter: testar sempre em XAU, US100, WTI, BTC e ETH, com spread e funding reais da Lighter, controle aleatório de mesmo lado e duração, terços, spread 4x, sem funding, filtro de correlação, treino/validação/OOS em 10 partes e carteiras. Usa a skill `backtest` para a parte estatística geral.
+
+- `scripts/protocolo.py`: custos por trade (short composto certo), métricas, controle aleatório, critério de aprovação, Holm/BH, filtro de correlação e carteira. `python protocolo.py` roda uma demonstração.
+- `scripts/lighter_dados.py`: custos e funding medidos na VPS (`python lighter_dados.py custos`, precisa de `DATA_API_TOKEN`) e candles/funding longos da API pública da Lighter.
+
 ## Instalação
 
 - **Claude Code:** copie `skills/backtest/` para `~/.claude/skills/backtest/` (pessoal) ou `.claude/skills/backtest/` (no projeto).

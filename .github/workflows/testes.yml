@@ -27,6 +27,7 @@ jobs:
           cd skills/backtest/scripts
           for s in estatistica comparacao portfolio backtest; do python $s.py > /dev/null; done
           python exemplo_completo.py --rapido > /dev/null
+          cd ../../backtest-lighter/scripts && python protocolo.py > /dev/null
       - name: Pacote da skill
         if: matrix.python == '3.12'
         uses: actions/upload-artifact@v4
