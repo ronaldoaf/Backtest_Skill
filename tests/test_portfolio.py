@@ -69,11 +69,33 @@ def test_pesos_respeitam_limites_em_todos_os_metodos():
     rng = np.random.default_rng(2)
     R = _amostra(rng, 500, np.full(4, 0.0005), _cov_exemplo())
     for m in P.METODOS:
-        res = P.pesos_portfolio(R, m, peso_max=0.35, rf_por_periodo=CDI)
-        w = np.array(list(res["pesos"].values()))
-        assert np.all(w <= 0.35 + 1e-9) and np.all(w >= -1e-12), m
-        if m != "kelly":
-            assert math.isclose(w.sum(), 1.0, abs_tol=1e-8), m
+        for lo in (0.0, 0.1):
+            res = P.pesos_portfolio(R, m, peso_min=lo, peso_max=0.35, rf_por_periodo=CDI)
+            w = np.array(list(res["pesos"].values()))
+            assert np.all(w <= 0.35 + 1e-9) and np.all(w >= lo - 1e-9), (m, lo)
+            if m != "kelly":
+                assert math.isclose(w.sum(), 1.0, abs_tol=1e-8), m
+
+
+def test_limites_por_nome_e_proporcionais():
+    rng = np.random.default_rng(21)
+    sd = np.array([0.003, 0.010, 0.012, 0.015, 0.02])
+    C = np.full((5, 5), 0.3)
+    np.fill_diagonal(C, 1)
+    R = _amostra(rng, 2000, np.zeros(5), C * np.outer(sd, sd))
+    livre = np.array(list(P.pesos_portfolio(R, "risk_parity")["pesos"].values()))
+    assert livre[0] > 0.3
+    limitado = np.array(list(P.pesos_portfolio(R, "risk_parity", peso_max=0.3)["pesos"].values()))
+    assert math.isclose(limitado[0], 0.3) and math.isclose(limitado.sum(), 1.0)
+    # as que não bateram no limite mantêm as proporções do risk parity
+    assert np.allclose(limitado[1:] / limitado[1:].sum(), livre[1:] / livre[1:].sum())
+    por_nome = P.pesos_portfolio(R, "risk_parity", peso_max={f"E{i + 1}": 0.3 for i in range(5)})
+    assert np.allclose(list(por_nome["pesos"].values()), limitado)
+    assert "faltam" in _levanta(P.pesos_portfolio, R, "hrp", peso_max={"E1": 0.5})
+    # limites diferentes por estratégia, inclusive mínimos
+    lo, hi = np.array([0.0, 0.1, 0.0, 0.2, 0.0]), np.array([0.25, 0.5, 0.5, 0.5, 0.15])
+    w = P._limitar(livre, lo, hi)
+    assert math.isclose(w.sum(), 1.0) and np.all(w >= lo - 1e-12) and np.all(w <= hi + 1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -140,16 +162,29 @@ def test_max_sharpe_com_limites_ganha_de_qualquer_ponto_viavel():
     rng = np.random.default_rng(13)
     S = _cov_exemplo()
     lo, hi = np.zeros(4), np.full(4, 0.35)
-    for _ in range(10):
-        mu = rng.normal(0.0003, 0.0003, 4)
+    for _ in range(20):
+        mu = rng.normal(0.0, 0.0006, 4)                     # muitas vezes com média 1/N negativa
         w = P._max_sharpe(mu, S, lo, hi)
         assert np.all(w <= hi + 1e-9) and math.isclose(w.sum(), 1.0)
-        if mu @ w <= 0:
+        if P._maior_media(mu, lo, hi) @ mu <= 0:           # nenhuma carteira de média positiva
             continue
         sr = lambda x: (mu @ x) / math.sqrt(x @ S @ x)  # noqa: E731
+        assert mu @ w > 0
         for _ in range(300):
             u = P._projetar(rng.dirichlet(np.ones(4)), lo, hi, 1.0)
             assert sr(u) <= sr(w) + 1e-9
+        assert sr(P._maior_media(mu, lo, hi)) <= sr(w) + 1e-12
+
+
+def test_max_sharpe_com_media_1_n_abaixo_do_cdi():
+    # 1/N tem média negativa, mas a estratégia 4 sozinha tem Sharpe positivo
+    S = _cov_exemplo()
+    sd = np.sqrt(np.diag(S))
+    mu = np.array([-0.88, -0.28, -2.07, 0.88]) / math.sqrt(252) * sd
+    assert mu.mean() < 0
+    w = P._max_sharpe(mu, S, np.zeros(4), np.ones(4))
+    sr = (mu @ w) / math.sqrt(w @ S @ w) * math.sqrt(252)
+    assert sr >= 0.88 - 1e-9 and w[3] > 0.5
 
 
 def test_max_sharpe_sem_media_positiva_vira_min_variancia():
@@ -167,12 +202,40 @@ def test_kelly_fracionado_bate_formula_e_deixa_sobra_no_cdi():
     mu = (R - CDI).mean(axis=0)
     Sh = P._cov(R, True)
     completo = np.linalg.solve(Sh, mu)
-    w = P._pesos(R, rf, "kelly", 0.0, 100.0, True, 0.0, 0.5, 100.0, None)
-    if np.all(completo > 0):
-        assert np.allclose(w, 0.5 * completo, rtol=1e-5)
+    w = P._pesos(R, rf, "kelly", -100.0, 100.0, True, 0.0, 0.5, 100.0, None)
+    assert np.allclose(w, 0.5 * completo, rtol=1e-6)               # sem limites: f × Kelly
+    # meio Kelly passa de 100%: com alavancagem 1 investe 100% (não 50%), no ótimo restrito
+    assert 0.5 * completo.sum() > 1
     limitado = P.pesos_portfolio(R, "kelly", rf_por_periodo=CDI, encolher_media=0.0)
-    assert sum(limitado["pesos"].values()) <= 0.5 + 1e-9            # meio Kelly, alavancagem 1
-    assert math.isclose(limitado["caixa"], 1 - sum(limitado["pesos"].values()))
+    wl = np.array(list(limitado["pesos"].values()))
+    assert math.isclose(wl.sum(), 1.0, abs_tol=1e-9)
+    assert math.isclose(limitado["caixa"], 1 - wl.sum())
+    obj = lambda x: mu @ x - x @ Sh @ x / (2 * 0.5)  # noqa: E731
+    for _ in range(300):
+        u = rng.dirichlet(np.ones(4)) * rng.uniform(0, 1)
+        assert obj(u) <= obj(wl) + 1e-12
+    # Kelly fraco: sobra no CDI
+    fraco = P.pesos_portfolio(CDI + _amostra(rng, 3000, np.full(4, 0.00002), S), "kelly",
+                              rf_por_periodo=CDI, encolher_media=0.0)
+    assert 0 < fraco["caixa"] < 1
+
+
+def test_quadratico_para_no_otimo():
+    # com momento, dois iterados iguais num vértice não garantem o ótimo: confere o resíduo
+    rng = np.random.default_rng(2024)
+    for _ in range(300):
+        N = int(rng.integers(3, 8))
+        B = rng.normal(0, 1, (N, 2))
+        sd = rng.uniform(0.005, 0.02, N)
+        C = B @ B.T + np.diag(rng.uniform(0.05, 1.0, N))
+        d = np.sqrt(np.diag(C))
+        S = C / np.outer(d, d) * np.outer(sd, sd)
+        mu = rng.uniform(-0.02, 0.1, N) * sd
+        for L in (1.0, 2.0):
+            proj = lambda v: P._projetar_ate(v, np.zeros(N), np.ones(N), L)  # noqa: E731
+            w = P._quadratico(S, mu, proj, np.zeros(N))
+            passo = 1 / np.linalg.eigvalsh(S)[-1]
+            assert np.max(np.abs(proj(w - passo * (S @ w - mu)) - w)) < 1e-9
 
 
 def test_encolher_media_total_iguala_as_medias():
@@ -263,6 +326,25 @@ def test_walk_forward_ancorado_e_vol_alvo():
     assert all(p["caixa"] > 0 for p in res["pesos"])          # sem alavancagem: sobra no CDI
     assert "janela" in _levanta(P.walk_forward_portfolio, R, janela=5)
     assert "desconhecidos" in _levanta(P.walk_forward_portfolio, R, janela=500, peso_maximo=0.3)
+    assert "kelly" in _levanta(P.walk_forward_portfolio, R, "kelly", janela=500, vol_alvo=0.05)
+    # pesos atuais: mesmos parâmetros, com as últimas linhas (ancorada = todas)
+    atual = res["pesos_atuais"]
+    w = np.array([atual[n] for n in res["nomes"]])
+    S = P.covariancia_ledoit_wolf(R)[0]
+    assert math.isclose(math.sqrt(w @ S @ w * 252), 0.05, rel_tol=1e-9)
+    assert math.isclose(atual["caixa"], 1 - w.sum())
+    movel = P.walk_forward_portfolio(R, "hrp", janela=500, peso_max=0.4)
+    direto = P.pesos_portfolio(R[-500:], "hrp", peso_max=0.4)["pesos"]
+    assert all(math.isclose(movel["pesos_atuais"][n], direto[n]) for n in direto)
+    assert movel["pesos_atuais_ate"] == len(R) - 1
+
+
+def test_faixa_marca_rebalanceamentos_nao_executados():
+    rng = np.random.default_rng(14)
+    R = _amostra(rng, 1200, np.full(3, 0.0003), _cov_exemplo()[:3, :3])
+    res = P.walk_forward_portfolio(R, "iguais", janela=200, rebalancear_a_cada=5, faixa=0.05)
+    executados = [p["executado"] for p in res["pesos"]]
+    assert executados[0] and not all(executados)
 
 
 def test_walk_forward_aceita_pandas_e_confere_datas():
@@ -276,9 +358,16 @@ def test_walk_forward_aceita_pandas_e_confere_datas():
     res = P.walk_forward_portfolio(df, "hrp", janela=252, rf_por_periodo=pd.Series(CDI, index=idx))
     assert res["indice"][0] == idx[252] and res["pesos"][0]["data"] == idx[252]
     assert set(res["pesos"][0]) >= {"a", "b", "c", "caixa"}
+    assert res["pesos_atuais_ate"] == idx[-1]
     msg = _levanta(P.walk_forward_portfolio, df, janela=252,
                    rf_por_periodo=pd.Series(CDI, index=idx + pd.Timedelta(days=1)))
     assert "mesmas datas" in msg
+    comp = P.comparar_metodos(df, metodos=("hrp",), janela=252, rf_por_periodo=pd.Series(CDI, index=idx),
+                              n_sim=100)
+    hist = comp["resultados"]["hrp"]["pesos"]
+    assert hist[0]["data"] == idx[252] and comp["resultados"]["hrp"]["indice"][0] == idx[252]
+    texto = P.formatar_comparacao(comp)
+    assert "Pesos atuais para operar" in texto and str(idx[-1].date()) in texto
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +402,23 @@ def test_diversificacao_detecta_redundancia_e_perdas_conjuntas():
     pesos = {"E1": 0.1, "E2": 0.1, "E3": 0.4, "E4": 0.4}
     rc = P.analise_diversificacao(R, pesos=pesos)["contribuicao_risco"]
     assert math.isclose(sum(rc.values()), 1.0)
+
+
+def test_perdas_conjuntas_sem_alarme_falso():
+    rng = np.random.default_rng(15)
+    # estratégias que ficam paradas na maior parte dos dias, independentes entre si
+    T = 2520
+    esparsa = lambda: np.where(rng.random(T) < 0.08, rng.normal(0.001, 0.02, T), 0.0)  # noqa: E731
+    d = P.analise_diversificacao(np.column_stack([esparsa(), esparsa(), rng.normal(0, 0.01, T)]))
+    assert not d["pares_perdem_juntos"]
+    assert d["dias_ruins"]["E1"] < 0.1 * T                      # dias parados não são dias ruins
+    # amostras curtas de normais (sem dependência extra nas caudas): poucos alarmes
+    C = np.full((5, 5), 0.5)
+    np.fill_diagonal(C, 1)
+    alarmes = sum(bool(P.analise_diversificacao(_amostra(rng, 156, np.zeros(5), C * 1e-4),
+                                                n_sim=100)["pares_perdem_juntos"])
+                  for _ in range(20))
+    assert alarmes <= 3
 
 
 # ---------------------------------------------------------------------------
